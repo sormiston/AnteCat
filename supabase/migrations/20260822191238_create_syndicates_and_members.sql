@@ -1,0 +1,43 @@
+-- Syndicates & membership.
+-- No local users table -- wired directly to Supabase auth.users (id UUID PK).
+
+CREATE TABLE syndicates (
+    syndicate_id   SERIAL PRIMARY KEY,
+    name           TEXT NOT NULL,
+    admin_user_id  UUID NOT NULL REFERENCES auth.users(id)
+    -- admin_user_id must also be a syndicate_members row for this syndicate -- see trigger below
+);
+
+CREATE TABLE syndicate_members (
+    syndicate_id  INTEGER NOT NULL REFERENCES syndicates(syndicate_id),
+    user_id       UUID NOT NULL REFERENCES auth.users(id),
+    joined_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (syndicate_id, user_id)
+);
+
+-- Trigger: syndicate admin must be a member of their own syndicate.
+-- A plain BEFORE INSERT trigger can't work here: syndicate_members.syndicate_id
+-- has an FK to syndicates, so no membership row can exist until the syndicate
+-- row itself exists. Deferred to COMMIT so callers can insert the syndicate
+-- row and its matching syndicate_members row in either order within one
+-- transaction; the check only runs once both are in place.
+CREATE OR REPLACE FUNCTION check_admin_is_member() RETURNS TRIGGER AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM syndicate_members
+    WHERE syndicate_id = NEW.syndicate_id
+      AND user_id = NEW.admin_user_id
+  ) THEN
+    RAISE EXCEPTION 'admin_user_id must be a member of the syndicate';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- FOR EACH ROW still fires once per affected row, same as any row trigger;
+-- DEFERRABLE INITIALLY DEFERRED only delays *when* each firing runs (to COMMIT
+-- instead of immediately), not which rows it covers.
+CREATE CONSTRAINT TRIGGER trg_check_admin_is_member
+AFTER INSERT OR UPDATE ON syndicates
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION check_admin_is_member();
