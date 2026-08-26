@@ -1,15 +1,14 @@
 -- Orders: coordination records, not fulfillment records. Belong to syndicates.
+-- Opened/closed/executed exclusively by the syndicate's one admin (syndicates.admin_user_id),
+-- so no separate actor column is stored per action -- it would be redundant.
 CREATE TABLE orders (
     order_id      SERIAL PRIMARY KEY,
     syndicate_id  INTEGER NOT NULL REFERENCES syndicates(syndicate_id),
-    opened_by     UUID NOT NULL REFERENCES auth.users(id),
     status        TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed', 'executed')),
     opened_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     deadline_at   TIMESTAMPTZ NOT NULL,
     closed_at     TIMESTAMPTZ,
-    closed_by     UUID REFERENCES auth.users(id),   -- NULL if closed automatically at deadline
     executed_at   TIMESTAMPTZ,
-    executed_by   UUID REFERENCES auth.users(id),
     CHECK (deadline_at > opened_at),
     CHECK (executed_at IS NULL OR closed_at IS NULL OR executed_at >= closed_at)
 );

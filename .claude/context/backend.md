@@ -7,15 +7,15 @@ Design a PostgreSQL schema for a syndicate purchase-coordination platform — **
 
 ## Key decisions
 - The platform is a coordination/ledger layer, not a retailer. `products` represents the external item being pooled for, not inventory the platform owns.
-- Primary account entity is Supabase `auth.users` — wired directly, no local `public.users`/profiles shadow table. Every FK to a person (`admin_user_id`, `opened_by`, `closed_by`, `executed_by`, `order_item_stakes.user_id`) is `UUID REFERENCES auth.users(id)`.
+- Primary account entity is Supabase `auth.users` — wired directly, no local `public.users`/profiles shadow table. Every FK to a person (`admin_user_id`, `order_item_stakes.user_id`) is `UUID REFERENCES auth.users(id)`.
 - Orders belong to syndicates, never directly to individual users. A solo buyer is a syndicate of one.
 - `products.pricing_type` discriminates `threshold_bundle` (fixed pack price, requires N distinct buyers where N = pack size) vs `tiered` (sliding per-unit price by cumulative quantity).
 - Threshold config lives in a 1-to-0/1 table (`product_bundle_thresholds`). Tiered config lives in a 1-to-0/1 table with a JSONB plan (`product_price_tier_plans`).
 - `order_item_stakes` splits one `order_items` row's quantity across syndicate members. `stake_amount_cents` is a **pure ledger figure** — no payment processing in-app, members settle externally. Stored (not derived from `stake_qty × unit_price_cents`) since cent-rounding on indivisible bundle splits can make it diverge.
 - **All money columns are `INTEGER` cents, never `NUMERIC`/decimal** (`product_bundle_thresholds.bundle_price_cents`, `product_price_tier_plans.tiers` JSONB values, `order_items.unit_price_cents`, `order_item_stakes.stake_amount_cents`) — eliminates floating point and keeps every price an exact whole-cent integer end to end.
 - Rounding: work in integer cents, `floor(total_cents / n)` per member, distribute leftover cents by a deterministic rule (rule TBD — see open questions). Never use floating point for money.
-- Each syndicate has exactly one admin (`syndicates.admin_user_id`), who opens orders and sets `deadline_at`.
-- **`orders.status` has three states: `open` → `closed` → `executed`, strictly forward, no skipping.** An order closes either automatically (deadline job) or manually (admin action, recorded via `closed_by`). An order is marked `executed` by an admin once payment has been made externally (`executed_by`/`executed_at`) — this is a pure audit flag with no effect on item resolution logic beyond what `closed` already triggers.
+- Each syndicate has exactly one admin (`syndicates.admin_user_id`), who opens orders and sets `deadline_at`. Orders can only ever be opened, closed, or executed by that same admin.
+- **`orders.status` has three states: `open` → `closed` → `executed`, strictly forward, no skipping.** An order closes either automatically (deadline job) or manually (admin action). An order is marked `executed` by the admin once payment has been made externally (`executed_at`) — this is a pure audit flag with no effect on item resolution logic beyond what `closed` already triggers.
 - `order_items` has no stored `status`. Resolution is derived, and **now resolves early, per item, independent of the parent order's status**: a threshold item resolves the instant `quantity` hits `threshold_qty`; a tiered item with a `max_quantity` set resolves the instant `quantity` hits it. Only items that haven't hit a cap wait for the order to close.
 - **Threshold items are hard-capped at exactly `threshold_qty`** — a stake that would push `quantity` past it is rejected outright (not clamped). No new column needed; enforced entirely by trigger, since the cap value lives on a different table (`product_bundle_thresholds`).
 - **Tiered items may optionally carry a per-order-item supply cap** — `order_items.max_quantity` (nullable). `NULL` = uncapped, unchanged default behavior. Deliberately per-item only, no product-level default: admin sets it when creating the item, and can raise or lower it during the open window with a plain `UPDATE` (this also covers "the vendor's available supply just changed," no separate mechanism needed). A stake that would exceed it is **rejected outright**, same behavior as the threshold case, enforced by the same trigger function.
@@ -66,9 +66,6 @@ erDiagram
   SYNDICATES ||--o{ SYNDICATE_MEMBERS : has
   USERS ||--o{ SYNDICATES : administers
   SYNDICATES ||--o{ ORDERS : places
-  USERS ||--o{ ORDERS : opens
-  USERS ||--o{ ORDERS : closes
-  USERS ||--o{ ORDERS : executes
   PRODUCTS ||--o| PRODUCT_BUNDLE_THRESHOLDS : has
   PRODUCTS ||--o| PRODUCT_PRICE_TIER_PLANS : has
   ORDERS ||--o{ ORDER_ITEMS : contains
@@ -109,14 +106,11 @@ erDiagram
   ORDERS {
     int order_id PK
     int syndicate_id FK
-    uuid opened_by FK
     string status
     timestamp opened_at
     timestamp deadline_at
     timestamp closed_at
-    uuid closed_by FK
     timestamp executed_at
-    uuid executed_by FK
   }
   ORDER_ITEMS {
     int order_item_id PK
@@ -134,7 +128,6 @@ erDiagram
     int stake_amount_cents
   }
 ```
-Note: `closed_by` and `executed_by` are nullable FKs (mermaid draws them the same as the mandatory `opened_by` — it can't express optionality on its own).
 
 ## Open questions
 - [ ] **Can members edit or withdraw a stake while an order is open?** Sharper now than before: if a threshold or capped-tiered item has already resolved early (hit its ceiling), does a withdrawal reopen it back to `pending`, or should a resolved item lock out further edits entirely? Not decided.
