@@ -1,11 +1,11 @@
 -- Stakes: who owes what for an order item (ledger only -- no payment processing)
 CREATE TABLE order_item_stakes (
-    stake_id       SERIAL PRIMARY KEY,
-    order_item_id  INTEGER NOT NULL REFERENCES order_items(order_item_id),
-    user_id        UUID NOT NULL REFERENCES auth.users(id),
-    stake_qty      INTEGER NOT NULL CHECK (stake_qty > 0),
-    stake_amount   NUMERIC(10,2) NOT NULL
-    -- stake_amount is a ledger figure only -- no payment processing in-app
+    stake_id           SERIAL PRIMARY KEY,
+    order_item_id      INTEGER NOT NULL REFERENCES order_items(order_item_id),
+    user_id            UUID NOT NULL REFERENCES auth.users(id),
+    stake_qty          INTEGER NOT NULL CHECK (stake_qty > 0),
+    stake_amount_cents INTEGER NOT NULL
+    -- stake_amount_cents is a ledger figure only -- no payment processing in-app
 );
 
 -- Trigger: stakes cannot push an order item past its capacity ceiling

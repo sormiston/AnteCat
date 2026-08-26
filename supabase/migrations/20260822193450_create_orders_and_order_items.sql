@@ -33,15 +33,15 @@ BEFORE UPDATE OF status ON orders
 FOR EACH ROW EXECUTE FUNCTION check_order_status_transition();
 
 CREATE TABLE order_items (
-    order_item_id SERIAL PRIMARY KEY,
-    order_id      INTEGER NOT NULL REFERENCES orders(order_id),
-    product_id    INTEGER NOT NULL REFERENCES products(product_id),
-    quantity      INTEGER NOT NULL DEFAULT 0,
-    unit_price    NUMERIC(10,2) NOT NULL,
-    max_quantity  INTEGER CHECK (max_quantity IS NULL OR max_quantity > 0),
+    order_item_id     SERIAL PRIMARY KEY,
+    order_id          INTEGER NOT NULL REFERENCES orders(order_id),
+    product_id        INTEGER NOT NULL REFERENCES products(product_id),
+    quantity          INTEGER NOT NULL DEFAULT 0,
+    unit_price_cents  INTEGER NOT NULL,
+    max_quantity      INTEGER CHECK (max_quantity IS NULL OR max_quantity > 0),
     -- tiered items only; NULL = uncapped. Threshold items are capped via threshold_qty instead.
     CHECK (quantity >= 0),
     CHECK (max_quantity IS NULL OR quantity <= max_quantity)
     -- quantity is trigger-maintained from order_item_stakes -- see next migration
-    -- unit_price: fixed at creation for threshold_bundle; live for tiered
+    -- unit_price_cents: fixed at creation for threshold_bundle; live for tiered
 );
