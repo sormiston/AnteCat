@@ -2,10 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Always check the project steering document, @SPEC.md.
 
-@AGENTS.md
+
+After any and all code changes, check that steering documents are free of misalignment or contradictions.  Steering documents are:
+
+@SPEC.md.
 @.claude/context/backend.md
+
+Always check project steering documents before work.
 
 ## Commands
 
