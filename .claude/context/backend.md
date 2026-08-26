@@ -42,14 +42,17 @@ Table/column structure lives in the ERD below; exact SQL lives in `supabase/migr
 | `order_items` | `max_quantity IS NULL OR max_quantity > 0` |
 | `order_items` | `quantity >= 0` |
 | `order_items` | `max_quantity IS NULL OR quantity <= max_quantity` |
+| `order_items` | `unit_price_cents > 0` |
 | `order_item_stakes` | `stake_qty > 0` |
+| `order_item_stakes` | `stake_amount_cents >= 0` |
+| `product_bundle_thresholds` | `bundle_price_cents > 0` |
 
 **Triggers**
 | Trigger | Table / timing | Enforces |
 |---|---|---|
 | `trg_check_admin_is_member` | `syndicates`, `AFTER INSERT OR UPDATE`, deferred to `COMMIT` | `admin_user_id` must be a `syndicate_members` row for that syndicate. Deferred (not plain `BEFORE`) because the membership row can't exist before the syndicate row does — lets a caller insert both in either order within one transaction. |
 | `trg_order_status_transition` | `orders`, `BEFORE UPDATE OF status` | `status` only moves `open` → `closed` → `executed`, never skips or reverses. |
-| `trg_check_stake_capacity` | `order_item_stakes`, `BEFORE INSERT OR UPDATE` | A stake can't push `order_items.quantity` past its ceiling — `threshold_qty` (via `product_bundle_thresholds`) for `threshold_bundle` products, `max_quantity` for `tiered` products. Overflow is **rejected outright, never clamped**. |
+| `trg_check_stake_capacity` | `order_item_stakes`, `BEFORE INSERT OR UPDATE` | A stake can't push `order_items.quantity` past its ceiling — `threshold_qty` (via `product_bundle_thresholds`) for `threshold_bundle` products, `max_quantity` for `tiered` products. Overflow is **rejected outright, never clamped**. Locks the parent `order_items` row (`SELECT ... FOR UPDATE`) before reading the current sum, so two concurrent stakes on the same item can't both read a pre-insert sum and together overflow the ceiling (a write-skew race otherwise possible under MVCC/READ COMMITTED). |
 | `trg_check_stake_user_is_member` | `order_item_stakes`, `BEFORE INSERT OR UPDATE` | `user_id` must be a `syndicate_members` row for the syndicate that owns the parent order (`order_item_stakes` → `order_items` → `orders` → `syndicate_id`). |
 | `trg_sync_order_item_quantity` | `order_item_stakes`, `AFTER INSERT OR UPDATE OR DELETE` | Keeps `order_items.quantity` equal to `SUM(order_item_stakes.stake_qty)` for its `order_item_id`. Runs after the two `BEFORE` triggers above have already rejected any overflow, so this write-back can never violate `order_items`' own `quantity <= max_quantity` check. Also resyncs both old and new parent if a stake's `order_item_id` is reassigned on `UPDATE`. |
 | `trg_apply_smallest_remainder_apportionment` | `order_item_stakes`, `AFTER INSERT OR UPDATE OF stake_qty` | The instant a `threshold_bundle` item's stakes sum to `threshold_qty`, rewrites every constituent stake's `stake_amount_cents` via smallest-remainder-first apportionment so they sum exactly to `bundle_price_cents` — ties broken by ascending `stake_id`. Scoped to `UPDATE OF stake_qty` (not a plain `UPDATE`) specifically so its own bulk rewrite of `stake_amount_cents` can't re-trigger itself. No-ops for `tiered` items and for fills below `threshold_qty`, leaving caller-supplied `stake_amount_cents` untouched. |
@@ -130,10 +133,11 @@ erDiagram
   }
 ```
 
-## Open questions
+## Open questions (clean after merges to main)
 - [ ] **Can members edit or withdraw a stake while an order is open?** Sharper now than before: if a threshold or capped-tiered item has already resolved early (hit its ceiling), does a withdrawal reopen it back to `pending`, or should a resolved item lock out further edits entirely? Not decided.
 - [x] ~~Deterministic rule for who absorbs leftover rounding cents~~ — decided: smallest-remainder-first, ties broken by ascending `stake_id`. See `trg_apply_smallest_remainder_apportionment` above.
-- [ ] Does the schema need a hook for where/how the actual external purchase happens once an item succeeds, or is that entirely manual/off-platform?
 - [ ] `order_item_resolution` is a plain `VIEW` for now — confirm that's the right mechanism vs. a stored/materialized resolution if this needs to scale.
-- [ ] Wiring FKs straight to `auth.users(id)` means the `authenticated`/`anon` roles have no `SELECT` on `auth.users` by default (Supabase locks that schema down) — any read path that needs to show a member's name/email (syndicate rosters, staker lists) will need a `public` view/function exposing just the safe columns, or a denormalized column, rather than joining `auth.users` directly from client-facing queries. Not designed yet.
+- [ ] Nowhere in this schema is there a users table you control. Every person is just a row in Supabase's built-in auth.users, and Supabase locks that table down by default — this app's normal client-side queries (as authenticated/anon) aren't allowed to read it.
+That's fine as long as all you ever do is store a user_id and compare UUIDs. But the moment a screen needs to show something human — "who's in this syndicate," "who staked how much on this item" — you need a name or email to put next to that UUID, and there's currently no allowed path to get one. The open question is simply: how do we let the app show member names/emails without giving it direct read access to auth.users?
+- [ ] **No `ON DELETE` behavior specified on any FK** — every foreign key in the schema (`syndicates.admin_user_id`, `syndicate_members.syndicate_id`/`user_id`, `orders.syndicate_id`, `order_items.order_id`/`product_id`, `order_item_stakes.order_item_id`/`user_id`, etc.) defaults to `NO ACTION`. For a ledger that should probably never cascade-delete history, that's plausibly the right call — but it isn't a documented decision, just an unconsidered default. Worth deciding explicitly (and probably: `RESTRICT`/`NO ACTION` everywhere, since this platform's whole premise is an immutable coordination ledger) rather than leaving it implicit.
 

@@ -66,7 +66,7 @@ BEGIN
 
   RETURN NULL;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public, pg_temp;
 
 CREATE TRIGGER trg_apply_smallest_remainder_apportionment
 AFTER INSERT OR UPDATE OF stake_qty ON order_item_stakes

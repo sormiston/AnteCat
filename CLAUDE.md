@@ -2,14 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-
-
 After any and all code changes, check that steering documents are free of misalignment or contradictions.  Steering documents are:
 
 @SPEC.md.
+@AGENTS.md
 @.claude/context/backend.md
 
 Always check project steering documents before work.
+Currently, this project is developing against a LOCAL supabase stack with no linked remote.  When asked to write SQL migrations, check that this remains the case.  If it does remain the case, then do not prefer to write new migrations to implement schema changes, rather, edit the old ones.
 
 ## Commands
 
@@ -19,8 +19,10 @@ Package manager is pnpm (`packageManager` pinned in package.json — don't use n
 - `pnpm ios` / `pnpm android` / `pnpm web` — start and open on a specific platform
 - `pnpm lint` — runs `expo lint` (ESLint, flat config via `eslint-config-expo/flat`)
 - `pnpm reset-project` — moves `src/` and `scripts/` to `example/` (or deletes them) and creates a blank `src/app/` with `index.tsx`/`_layout.tsx`; run only when explicitly asked to strip the template
+- `pnpm test` — run the Vitest suite once (`vitest run`)
+- `pnpm test:watch` — run Vitest in watch mode
 
-There is no test script configured and no test framework installed yet.
+Integration tests (`tests/`) hit a local Supabase instance directly — run `supabase start` first, and fill in `.env.test.local` (see `.env.example`) with the local API URL/anon key from `supabase status`. Tests are type-checked separately from the app via `tsconfig.test.json` (Node-scoped, not the Expo/RN-scoped root `tsconfig.json`) — see `pnpm exec tsc -p tsconfig.test.json --noEmit`.
 
 ## Architecture
 
