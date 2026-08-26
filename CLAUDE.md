@@ -30,3 +30,7 @@ Integration tests (`tests/`) hit a local Supabase instance directly — run `sup
 - **Routing**: Expo Router (file-based). Routes live in `src/app/`, not the conventional root-level `app/` — this is set via the `expo-router` plugin/main entry, so don't expect Expo's default docs paths to match without checking `src/app/`.
 - Import alias `@/*` → `src/*` and `@/assets/*` → `assets/*` (see `tsconfig.json`). Use these instead of relative `../../` paths.
 
+# Autogen code
+These are procedurally generated files.  Never edit them.
+
+- src/lib/database.types.ts 
