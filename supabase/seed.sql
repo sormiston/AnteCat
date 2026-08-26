@@ -6,7 +6,7 @@ INSERT INTO products (product_id, name, description, pricing_type, unit_of_quant
   (2, 'Bulk Gizmos', 'Gizmos priced per-unit on a sliding scale', 'tiered', 'gram', 100);
 
 INSERT INTO product_bundle_thresholds (product_id, threshold_qty, bundle_price_cents) VALUES
-  (1, 6, 5994);
+  (1, 6, 5000);
 
 INSERT INTO product_price_tier_plans (product_id, tiers) VALUES
   (2, '{"100": 2499, "500": 2150, "1000": 1800}');
@@ -59,21 +59,21 @@ SELECT setval('syndicates_syndicate_id_seq', (SELECT MAX(syndicate_id) FROM synd
 
 -- One order, still open, deadline a few days out, sitting in a semi-finished
 -- (pending) state on both items.
-INSERT INTO orders (order_id, syndicate_id, opened_by, status, deadline_at) VALUES
-  (1, 1, 'a1111111-1111-1111-1111-111111111111', 'open', now() + interval '4 days');
+INSERT INTO orders (order_id, syndicate_id, status, deadline_at) VALUES
+  (1, 1, 'open', now() + interval '4 days');
 
 SELECT setval('orders_order_id_seq', (SELECT MAX(order_id) FROM orders));
 
 INSERT INTO order_items (order_item_id, order_id, product_id, unit_price_cents, max_quantity) VALUES
-  (1, 1, 1, 999, NULL),   -- Widget 6-Pack
+  (1, 1, 1, 833, NULL),   -- Widget 6-Pack
   (2, 1, 2, 2499, 2500);    -- Bulk Gizmos
 
 SELECT setval('order_items_order_item_id_seq', (SELECT MAX(order_item_id) FROM order_items));
 
 -- order_items.quantity is trigger-maintained off these stakes.
 INSERT INTO order_item_stakes (order_item_id, user_id, stake_qty, stake_amount_cents) VALUES
-  (1, 'a2222222-2222-2222-2222-222222222222', 2, 1998),
-  (1, 'a3333333-3333-3333-3333-333333333333', 1, 999),
+  (1, 'a2222222-2222-2222-2222-222222222222', 2, 1666),
+  (1, 'a3333333-3333-3333-3333-333333333333', 1, 833),
   (2, 'a4444444-4444-4444-4444-444444444444', 200, 4998);
 
 SELECT setval('order_item_stakes_stake_id_seq', (SELECT MAX(stake_id) FROM order_item_stakes));
