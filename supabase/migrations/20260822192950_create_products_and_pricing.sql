@@ -13,8 +13,8 @@ CREATE TABLE products (
 CREATE TABLE product_bundle_thresholds (
     product_id          INTEGER PRIMARY KEY REFERENCES products(product_id),
     threshold_qty       INTEGER NOT NULL CHECK (threshold_qty > 0),
-    bundle_price_cents  INTEGER NOT NULL CHECK (bundle_price_cents > 0)
-    -- per-unit price (cents) = bundle_price_cents / threshold_qty
+    bundle_price        INTEGER NOT NULL CHECK (bundle_price > 0)
+    -- per-unit price (cents) = bundle_price / threshold_qty
 );
 
 -- tiered products only

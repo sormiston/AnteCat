@@ -1,8 +1,8 @@
 -- Trigger: when a threshold_bundle order_item's stakes fill its threshold_qty,
--- re-derive every constituent stake's stake_amount_cents by smallest-remainder-first
--- apportionment so they sum exactly to bundle_price_cents.
+-- re-derive every constituent stake's stake_amount by smallest-remainder-first
+-- apportionment so they sum exactly to bundle_price.
 --
--- Each stake's ideal share is bundle_price_cents * stake_qty / threshold_qty.
+-- Each stake's ideal share is bundle_price * stake_qty / threshold_qty.
 -- Every stake gets floor(ideal share); the cents left over (always fewer than
 -- there are stakes) go one-per-stake to whichever stakes had the SMALLEST
 -- fractional remainder, ties broken by ascending stake_id for determinism.
@@ -12,9 +12,9 @@
 -- distortion across the item's stakes.
 --
 -- Fires AFTER INSERT OR UPDATE OF stake_qty only -- never on updates to
--- stake_amount_cents itself -- so this trigger's own bulk rewrite of that
+-- stake_amount itself -- so this trigger's own bulk rewrite of that
 -- column doesn't re-trigger itself. Before threshold_qty is reached, stakes
--- keep whatever stake_amount_cents the caller supplied at INSERT; this
+-- keep whatever stake_amount the caller supplied at INSERT; this
 -- trigger is the only thing that revises it, and only once, the instant the
 -- bundle fills.
 CREATE OR REPLACE FUNCTION apply_smallest_remainder_apportionment() RETURNS TRIGGER AS $$
@@ -24,7 +24,7 @@ DECLARE
   v_bundle_price   INTEGER;
   v_total_qty      INTEGER;
 BEGIN
-  SELECT p.pricing_type, pbt.threshold_qty, pbt.bundle_price_cents
+  SELECT p.pricing_type, pbt.threshold_qty, pbt.bundle_price
     INTO v_pricing_type, v_threshold_qty, v_bundle_price
   FROM order_items oi
   JOIN products p ON p.product_id = oi.product_id
@@ -60,7 +60,7 @@ BEGIN
     FROM shares
   )
   UPDATE order_item_stakes s
-  SET stake_amount_cents = ranked.base_cents + CASE WHEN ranked.rank <= ranked.leftover_cents THEN 1 ELSE 0 END
+  SET stake_amount = ranked.base_cents + CASE WHEN ranked.rank <= ranked.leftover_cents THEN 1 ELSE 0 END
   FROM ranked
   WHERE s.stake_id = ranked.stake_id;
 

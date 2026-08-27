@@ -4,8 +4,8 @@ CREATE TABLE order_item_stakes (
     order_item_id      INTEGER NOT NULL REFERENCES order_items(order_item_id),
     user_id            UUID NOT NULL REFERENCES auth.users(id),
     stake_qty          INTEGER NOT NULL CHECK (stake_qty > 0),
-    stake_amount_cents INTEGER NOT NULL CHECK (stake_amount_cents >= 0)
-    -- stake_amount_cents is a ledger figure only -- no payment processing in-app
+    stake_amount INTEGER NOT NULL CHECK (stake_amount >= 0)
+    -- stake_amount is a ledger figure only -- no payment processing in-app
 );
 
 -- FKs, read on every stake write by every trigger below -- not auto-indexed

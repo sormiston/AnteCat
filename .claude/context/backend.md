@@ -11,9 +11,9 @@ Design a PostgreSQL schema for a syndicate purchase-coordination platform — **
 - Orders belong to syndicates, never directly to individual users. A solo buyer is a syndicate of one.
 - `products.pricing_type` discriminates `threshold_bundle` (fixed pack price, requires N distinct buyers where N = pack size) vs `tiered` (sliding per-unit price by cumulative quantity).
 - Threshold config lives in a 1-to-0/1 table (`product_bundle_thresholds`). Tiered config lives in a 1-to-0/1 table with a JSONB plan (`product_price_tier_plans`).
-- `order_item_stakes` splits one `order_items` row's quantity across syndicate members. `stake_amount_cents` is a **pure ledger figure** — no payment processing in-app, members settle externally. Stored (not derived from `stake_qty × unit_price_cents`) since cent-rounding on indivisible bundle splits can make it diverge.
-- **All money columns are `INTEGER` cents, never `NUMERIC`/decimal** (`product_bundle_thresholds.bundle_price_cents`, `product_price_tier_plans.tiers` JSONB values, `order_items.unit_price_cents`, `order_item_stakes.stake_amount_cents`) — eliminates floating point and keeps every price an exact whole-cent integer end to end.
-- Rounding: work in integer cents, distribute leftover cents by **smallest-remainder-first apportionment**, applied the instant a `threshold_bundle` item's stakes fill `threshold_qty`: each stake's ideal share is `bundle_price_cents / threshold_qty × stake_qty`, every stake gets `floor()` of that, and the leftover cents (always fewer than there are stakes) go one-per-stake to whichever stakes had the *smallest* fractional remainder — ties broken by ascending `stake_id`. Until that instant, `stake_amount_cents` holds whatever the caller supplied at `INSERT`; the trigger revises it exactly once, at resolution, never before. This is the mirror of the Hamilton (largest-remainder) method: it deliberately routes the marginal cent to whoever's ideal share was already closest to the floor.
+- `order_item_stakes` splits one `order_items` row's quantity across syndicate members. `stake_amount` is a **pure ledger figure** — no payment processing in-app, members settle externally. Stored (not derived from `stake_qty × unit_price`) since cent-rounding on indivisible bundle splits can make it diverge.
+- **All money columns are `INTEGER` cents, never `NUMERIC`/decimal** (`product_bundle_thresholds.bundle_price`, `product_price_tier_plans.tiers` JSONB values, `order_items.unit_price`, `order_item_stakes.stake_amount`) — eliminates floating point and keeps every price an exact whole-cent integer end to end.
+- Rounding: work in integer cents, distribute leftover cents by **smallest-remainder-first apportionment**, applied the instant a `threshold_bundle` item's stakes fill `threshold_qty`: each stake's ideal share is `bundle_price / threshold_qty × stake_qty`, every stake gets `floor()` of that, and the leftover cents (always fewer than there are stakes) go one-per-stake to whichever stakes had the *smallest* fractional remainder — ties broken by ascending `stake_id`. Until that instant, `stake_amount` holds whatever the caller supplied at `INSERT`; the trigger revises it exactly once, at resolution, never before. This is the mirror of the Hamilton (largest-remainder) method: it deliberately routes the marginal cent to whoever's ideal share was already closest to the floor.
 - Each syndicate has exactly one admin (`syndicates.admin_user_id`), who opens orders and sets `deadline_at`. Orders can only ever be opened, closed, or executed by that same admin.
 - **`orders.status` has three states: `open` → `closed` → `executed`, strictly forward, no skipping.** An order closes either automatically (deadline job) or manually (admin action). An order is marked `executed` by the admin once payment has been made externally (`executed_at`) — this is a pure audit flag with no effect on item resolution logic beyond what `closed` already triggers.
 - `order_items` has no stored `status`. Resolution is derived, and **resolves per item independent of the parent order's status**: a threshold item resolves as 'succeeded' the instant `quantity` hits `threshold_qty`; a tiered item with a `max_quantity` set resolves to 'maxed_out' the instant `quantity` hits it.  Otherwise, `order_items.status` is `open`.
@@ -42,10 +42,10 @@ Table/column structure lives in the ERD below; exact SQL lives in `supabase/migr
 | `order_items` | `max_quantity IS NULL OR max_quantity > 0` |
 | `order_items` | `quantity >= 0` |
 | `order_items` | `max_quantity IS NULL OR quantity <= max_quantity` |
-| `order_items` | `unit_price_cents > 0` |
+| `order_items` | `unit_price > 0` |
 | `order_item_stakes` | `stake_qty > 0` |
-| `order_item_stakes` | `stake_amount_cents >= 0` |
-| `product_bundle_thresholds` | `bundle_price_cents > 0` |
+| `order_item_stakes` | `stake_amount >= 0` |
+| `product_bundle_thresholds` | `bundle_price > 0` |
 
 **Triggers**
 | Trigger | Table / timing | Enforces |
@@ -55,7 +55,7 @@ Table/column structure lives in the ERD below; exact SQL lives in `supabase/migr
 | `trg_check_stake_capacity` | `order_item_stakes`, `BEFORE INSERT OR UPDATE` | A stake can't push `order_items.quantity` past its ceiling — `threshold_qty` (via `product_bundle_thresholds`) for `threshold_bundle` products, `max_quantity` for `tiered` products. Overflow is **rejected outright, never clamped**. Locks the parent `order_items` row (`SELECT ... FOR UPDATE`) before reading the current sum, so two concurrent stakes on the same item can't both read a pre-insert sum and together overflow the ceiling (a write-skew race otherwise possible under MVCC/READ COMMITTED). |
 | `trg_check_stake_user_is_member` | `order_item_stakes`, `BEFORE INSERT OR UPDATE` | `user_id` must be a `syndicate_members` row for the syndicate that owns the parent order (`order_item_stakes` → `order_items` → `orders` → `syndicate_id`). |
 | `trg_sync_order_item_quantity` | `order_item_stakes`, `AFTER INSERT OR UPDATE OR DELETE` | Keeps `order_items.quantity` equal to `SUM(order_item_stakes.stake_qty)` for its `order_item_id`. Runs after the two `BEFORE` triggers above have already rejected any overflow, so this write-back can never violate `order_items`' own `quantity <= max_quantity` check. Also resyncs both old and new parent if a stake's `order_item_id` is reassigned on `UPDATE`. |
-| `trg_apply_smallest_remainder_apportionment` | `order_item_stakes`, `AFTER INSERT OR UPDATE OF stake_qty` | The instant a `threshold_bundle` item's stakes sum to `threshold_qty`, rewrites every constituent stake's `stake_amount_cents` via smallest-remainder-first apportionment so they sum exactly to `bundle_price_cents` — ties broken by ascending `stake_id`. Scoped to `UPDATE OF stake_qty` (not a plain `UPDATE`) specifically so its own bulk rewrite of `stake_amount_cents` can't re-trigger itself. No-ops for `tiered` items and for fills below `threshold_qty`, leaving caller-supplied `stake_amount_cents` untouched. |
+| `trg_apply_smallest_remainder_apportionment` | `order_item_stakes`, `AFTER INSERT OR UPDATE OF stake_qty` | The instant a `threshold_bundle` item's stakes sum to `threshold_qty`, rewrites every constituent stake's `stake_amount` via smallest-remainder-first apportionment so they sum exactly to `bundle_price` — ties broken by ascending `stake_id`. Scoped to `UPDATE OF stake_qty` (not a plain `UPDATE`) specifically so its own bulk rewrite of `stake_amount` can't re-trigger itself. No-ops for `tiered` items and for fills below `threshold_qty`, leaving caller-supplied `stake_amount` untouched. |
 
 **Views**
 | View | Derives |
@@ -101,7 +101,7 @@ erDiagram
   PRODUCT_BUNDLE_THRESHOLDS {
     int product_id FK
     int threshold_qty
-    int bundle_price_cents
+    int bundle_price
   }
   PRODUCT_PRICE_TIER_PLANS {
     int product_id FK
@@ -121,7 +121,7 @@ erDiagram
     int order_id FK
     int product_id FK
     int quantity
-    int unit_price_cents
+    int unit_price
     int max_quantity
   }
   ORDER_ITEM_STAKES {
@@ -129,7 +129,7 @@ erDiagram
     int order_item_id FK
     uuid user_id FK
     int stake_qty
-    int stake_amount_cents
+    int stake_amount
   }
 ```
 

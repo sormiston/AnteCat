@@ -41,13 +41,13 @@ CREATE TABLE order_items (
     order_id          INTEGER NOT NULL REFERENCES orders(order_id),
     product_id        INTEGER NOT NULL REFERENCES products(product_id),
     quantity          INTEGER NOT NULL DEFAULT 0,
-    unit_price_cents  INTEGER NOT NULL CHECK (unit_price_cents > 0),
+    unit_price        INTEGER NOT NULL CHECK (unit_price > 0),
     max_quantity      INTEGER CHECK (max_quantity IS NULL OR max_quantity > 0),
     -- tiered items only; NULL = uncapped. Threshold items are capped via threshold_qty instead.
     CHECK (quantity >= 0),
     CHECK (max_quantity IS NULL OR quantity <= max_quantity)
     -- quantity is trigger-maintained from order_item_stakes -- see next migration
-    -- unit_price_cents: fixed at creation for threshold_bundle; live for tiered
+    -- unit_price: fixed at creation for threshold_bundle; live for tiered
 );
 
 -- FKs, joined constantly (check_stake_capacity, apply_smallest_remainder_apportionment,

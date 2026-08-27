@@ -12,21 +12,21 @@ export type Database = {
       order_item_stakes: {
         Row: {
           order_item_id: number
-          stake_amount_cents: number
+          stake_amount: number
           stake_id: number
           stake_qty: number
           user_id: string
         }
         Insert: {
           order_item_id: number
-          stake_amount_cents: number
+          stake_amount: number
           stake_id?: number
           stake_qty: number
           user_id: string
         }
         Update: {
           order_item_id?: number
-          stake_amount_cents?: number
+          stake_amount?: number
           stake_id?: number
           stake_qty?: number
           user_id?: string
@@ -55,7 +55,7 @@ export type Database = {
           order_item_id: number
           product_id: number
           quantity: number
-          unit_price_cents: number
+          unit_price: number
         }
         Insert: {
           max_quantity?: number | null
@@ -63,7 +63,7 @@ export type Database = {
           order_item_id?: number
           product_id: number
           quantity?: number
-          unit_price_cents: number
+          unit_price: number
         }
         Update: {
           max_quantity?: number | null
@@ -71,7 +71,7 @@ export type Database = {
           order_item_id?: number
           product_id?: number
           quantity?: number
-          unit_price_cents?: number
+          unit_price?: number
         }
         Relationships: [
           {
@@ -130,17 +130,17 @@ export type Database = {
       }
       product_bundle_thresholds: {
         Row: {
-          bundle_price_cents: number
+          bundle_price: number
           product_id: number
           threshold_qty: number
         }
         Insert: {
-          bundle_price_cents: number
+          bundle_price: number
           product_id: number
           threshold_qty: number
         }
         Update: {
-          bundle_price_cents?: number
+          bundle_price?: number
           product_id?: number
           threshold_qty?: number
         }
