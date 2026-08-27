@@ -7,8 +7,11 @@ After any and all code changes, check that steering documents are free of misali
 @SPEC.md.
 @AGENTS.md
 @.claude/context/backend.md
+@ROADMAP.md
+@README.md
 
-Always check project steering documents before work.
+Always check the project steering documents before work.
+
 Currently, this project is developing against a LOCAL supabase stack with no linked remote.  When asked to write SQL migrations, check that this remains the case.  If it does remain the case, then do not prefer to write new migrations to implement schema changes, rather, edit the old ones.
 
 ## Commands

@@ -1,6 +1,4 @@
-# Welcome to your Expo app 👋
-
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+# AnteCat
 
 ## Get started
 
@@ -25,32 +23,32 @@ In the output, you'll find options to open the app in a
 
 You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
-## Get a fresh project
+ ## Scripts
 
-When you're ready, run:
+Package manager is pnpm (`packageManager` pinned in package.json — don't use npm/yarn).
 
-```bash
-pnpm reset-project
-```
+- `pnpm start` — start the Metro dev server (Expo Go / dev client)
+- `pnpm ios` / `pnpm android` / `pnpm web` — start and open on a specific platform
+- `pnpm lint` — runs `expo lint` (ESLint, flat config via `eslint-config-expo/flat`)
+- `pnpm reset-project` — moves `src/` and `scripts/` to `example/` (or deletes them) and creates a blank `src/app/` with `index.tsx`/`_layout.tsx`; run only when explicitly asked to strip the template
+- `pnpm test` — run the Vitest suite once (`vitest run`)
+- `pnpm test:watch` — run Vitest in watch mode
 
-This command will move `src/` and `scripts/` to an **example** directory (or delete them) and create a blank **src/app** directory where you can start developing.
+Integration tests (`tests/`) hit a local Supabase instance directly — run `supabase start` first, and fill in `.env.test.local` (see `.env.example`) with the local API URL/anon key from `supabase status`. Tests are type-checked separately from the app via `tsconfig.test.json` (Node-scoped, not the Expo/RN-scoped root `tsconfig.json`) — see `pnpm exec tsc -p tsconfig.test.json --noEmit`.
 
-### Other setup steps
+## Architecture
+### Backend
 
-- To set up ESLint for linting, run `pnpm lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
 
-## Learn more
+### Frontend
+- The `expo reset-project` template strip has been run: `src/` currently holds only the blank scaffold (`src/app/_layout.tsx` with a bare `Stack`, `src/app/index.tsx` with a placeholder screen). The tabs/theming/platform-file structure previously documented here no longer exists — rebuild this section once the app is scaffolded back out.
+- **Routing**: Expo Router (file-based). Routes live in `src/app/`, not the conventional root-level `app/` — this is set via the `expo-router` plugin/main entry, so don't expect Expo's default docs paths to match without checking `src/app/`.
+- Import alias `@/*` → `src/*` and `@/assets/*` → `assets/*` (see `tsconfig.json`). Use these instead of relative `../../` paths.
 
-To learn more about developing your project with Expo, look at the following resources:
+### Autogen code
+These are procedurally generated files.  Never edit them.
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+- src/lib/database.types.ts 
 
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+### Libraries
+- date-fns: preferred as more readable and ergonomic than native Javascript Date objects
