@@ -19,7 +19,7 @@
 -- bundle fills.
 CREATE OR REPLACE FUNCTION apply_smallest_remainder_apportionment() RETURNS TRIGGER AS $$
 DECLARE
-  v_pricing_type   TEXT;
+  v_pricing_type   product_pricing_type;
   v_threshold_qty  INTEGER;
   v_bundle_price   INTEGER;
   v_total_qty      INTEGER;

@@ -97,7 +97,7 @@ export type Database = {
           executed_at: string | null
           opened_at: string
           order_id: number
-          status: string
+          status: Database["public"]["Enums"]["order_status"]
           syndicate_id: number
         }
         Insert: {
@@ -106,7 +106,7 @@ export type Database = {
           executed_at?: string | null
           opened_at?: string
           order_id?: number
-          status?: string
+          status?: Database["public"]["Enums"]["order_status"]
           syndicate_id: number
         }
         Update: {
@@ -115,7 +115,7 @@ export type Database = {
           executed_at?: string | null
           opened_at?: string
           order_id?: number
-          status?: string
+          status?: Database["public"]["Enums"]["order_status"]
           syndicate_id?: number
         }
         Relationships: [
@@ -182,7 +182,7 @@ export type Database = {
           created_at: string | null
           description: string | null
           name: string
-          pricing_type: string
+          pricing_type: Database["public"]["Enums"]["product_pricing_type"]
           product_id: number
           qty_step: number
           unit_of_quantity: string
@@ -191,7 +191,7 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           name: string
-          pricing_type: string
+          pricing_type: Database["public"]["Enums"]["product_pricing_type"]
           product_id?: number
           qty_step: number
           unit_of_quantity: string
@@ -200,7 +200,7 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           name?: string
-          pricing_type?: string
+          pricing_type?: Database["public"]["Enums"]["product_pricing_type"]
           product_id?: number
           qty_step?: number
           unit_of_quantity?: string
@@ -256,7 +256,9 @@ export type Database = {
       order_item_resolution: {
         Row: {
           order_item_id: number | null
-          resolution_status: string | null
+          resolution_status:
+            | Database["public"]["Enums"]["order_item_resolution_status"]
+            | null
         }
         Relationships: []
       }
@@ -265,7 +267,9 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      order_item_resolution_status: "open" | "succeeded" | "maxed_out"
+      order_status: "open" | "closed" | "executed"
+      product_pricing_type: "threshold_bundle" | "tiered"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -392,7 +396,11 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      order_item_resolution_status: ["open", "succeeded", "maxed_out"],
+      order_status: ["open", "closed", "executed"],
+      product_pricing_type: ["threshold_bundle", "tiered"],
+    },
   },
 } as const
 

@@ -18,7 +18,7 @@ CREATE INDEX idx_order_item_stakes_user_id ON order_item_stakes (user_id);
 -- Overflow is rejected outright, never clamped.
 CREATE OR REPLACE FUNCTION check_stake_capacity() RETURNS TRIGGER AS $$
 DECLARE
-  v_pricing_type TEXT;
+  v_pricing_type product_pricing_type;
   v_threshold    INTEGER;
   v_max_qty      INTEGER;
   v_current_qty  INTEGER;
