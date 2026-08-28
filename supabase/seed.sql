@@ -1,9 +1,9 @@
 -- Local dev fixtures: product catalog, one syndicate (admin + members), and
 -- one order sitting in a semi-finished, still-open state.
 
-INSERT INTO products (product_id, name, description, pricing_type, unit_of_quantity, qty_step) VALUES
-  (1, 'Widget 6-Pack', 'Bulk widgets sold in fixed 6-packs', 'threshold_bundle', 'widget', 1),
-  (2, 'Bulk Gizmos', 'Gizmos priced per-unit on a sliding scale', 'tiered', 'gram', 100);
+INSERT INTO products (product_id, name, description, pricing_type) VALUES
+  (1, 'Widget 6-Pack', 'Bulk widgets sold in fixed 6-packs', 'threshold_bundle'),
+  (2, 'Bulk Gizmos', 'Gizmos priced per-unit on a sliding scale', 'tiered');
 
 INSERT INTO product_bundle_thresholds (product_id, threshold_qty, bundle_price) VALUES
   (1, 6, 5000);

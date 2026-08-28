@@ -90,8 +90,6 @@ erDiagram
     int product_id PK
     string name
     product_pricing_type pricing_type
-    string unit_of_quantity
-    numeric qty_step
   }
   PRODUCT_BUNDLE_THRESHOLDS {
     int product_id FK
