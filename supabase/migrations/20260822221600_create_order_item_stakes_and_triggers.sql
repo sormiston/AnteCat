@@ -4,7 +4,7 @@ CREATE TABLE order_item_stakes (
     order_item_id      INTEGER NOT NULL REFERENCES order_items(order_item_id),
     user_id            UUID NOT NULL REFERENCES auth.users(id),
     stake_qty          INTEGER NOT NULL CHECK (stake_qty > 0),
-    stake_amount INTEGER NOT NULL CHECK (stake_amount >= 0)
+    stake_amount       INTEGER NOT NULL CHECK (stake_amount >= 0)
     -- stake_amount is a ledger figure only -- no payment processing in-app
 );
 
@@ -87,8 +87,7 @@ FOR EACH ROW EXECUTE FUNCTION check_stake_user_is_member();
 -- Trigger: keep order_items.quantity in sync with SUM(order_item_stakes.stake_qty).
 -- Runs AFTER the two BEFORE triggers above have already rejected any overflow,
 -- so this write-back can never violate order_items' own quantity <= max_quantity
--- CHECK. Handles DELETE (no NEW row) and the unlikely case of a stake being
--- reassigned to a different order_item_id on UPDATE (resyncs both parents).
+-- CHECK.
 CREATE OR REPLACE FUNCTION sync_order_item_quantity() RETURNS TRIGGER AS $$
 DECLARE
   v_order_item_id INTEGER;
@@ -105,14 +104,6 @@ BEGIN
   )
   WHERE order_item_id = v_order_item_id;
 
-  IF TG_OP = 'UPDATE' AND OLD.order_item_id IS DISTINCT FROM NEW.order_item_id THEN
-    UPDATE order_items
-    SET quantity = COALESCE(
-      (SELECT SUM(stake_qty) FROM order_item_stakes WHERE order_item_id = OLD.order_item_id), 0
-    )
-    WHERE order_item_id = OLD.order_item_id;
-  END IF;
-
   RETURN NULL;
 END;
 $$ LANGUAGE plpgsql SET search_path = public, pg_temp;
@@ -120,3 +111,85 @@ $$ LANGUAGE plpgsql SET search_path = public, pg_temp;
 CREATE TRIGGER trg_sync_order_item_quantity
 AFTER INSERT OR UPDATE OR DELETE ON order_item_stakes
 FOR EACH ROW EXECUTE FUNCTION sync_order_item_quantity();
+
+-- Trigger: keeps order_item_stakes.stake_amount authoritative on every
+-- stake_qty change, via two mutually exclusive paths:
+--
+-- 1. Threshold-bundle apportionment: the instant a threshold_bundle
+--    order_item's stakes fill its threshold_qty, re-derive every
+--    constituent stake's stake_amount by smallest-remainder-first
+--    apportionment so they sum exactly to bundle_price. Each stake's ideal
+--    share is bundle_price * stake_qty / threshold_qty; every stake gets
+--    floor(ideal share); the cents left over (always fewer than there are
+--    stakes) go one-per-stake to whichever stakes had the SMALLEST
+--    fractional remainder, ties broken by ascending stake_id for
+--    determinism. This is the mirror of the Hamilton (largest-remainder)
+--    method: it routes the marginal cent to whoever's ideal share was
+--    already closest to the floor, at the cost of maximizing (rather than
+--    minimizing) aggregate rounding distortion across the item's stakes.
+-- 2. Plain default: for tiered items (always), and for threshold-bundle
+--    items still below threshold_qty, stake_amount is simply
+--    stake_qty * unit_price. This is what makes stake_amount authoritative
+--    from the very first INSERT rather than trusting caller input -- a
+--    PostgREST caller can still send any value in the same request, but it
+--    is unconditionally overwritten here.  TODO: lock stake_amount with a policy
+--    since it is always a computed value, and should never be written via INSERT.
+--    
+
+CREATE OR REPLACE FUNCTION sync_stake_amount_on_stake_qty() RETURNS TRIGGER AS $$
+DECLARE
+  v_pricing_type   product_pricing_type;
+  v_threshold_qty  INTEGER;
+  v_bundle_price   INTEGER;
+  v_unit_price     INTEGER;
+  v_total_qty      INTEGER;
+BEGIN
+  SELECT p.pricing_type, pbt.threshold_qty, pbt.bundle_price, oi.unit_price
+    INTO v_pricing_type, v_threshold_qty, v_bundle_price, v_unit_price
+  FROM order_items oi
+  JOIN products p ON p.product_id = oi.product_id
+  LEFT JOIN product_bundle_thresholds pbt ON pbt.product_id = p.product_id
+  WHERE oi.order_item_id = NEW.order_item_id;
+
+  IF v_pricing_type = 'threshold_bundle' THEN
+    SELECT COALESCE(SUM(stake_qty), 0) INTO v_total_qty
+    FROM order_item_stakes
+    WHERE order_item_id = NEW.order_item_id;
+
+    IF v_total_qty >= v_threshold_qty THEN
+      WITH shares AS (
+        SELECT
+          stake_id,
+          (v_bundle_price::BIGINT * stake_qty) / v_threshold_qty AS base_cents,
+          (v_bundle_price::BIGINT * stake_qty) % v_threshold_qty AS remainder
+        FROM order_item_stakes
+        WHERE order_item_id = NEW.order_item_id
+      ),
+      ranked AS (
+        SELECT
+          stake_id,
+          base_cents,
+          ROW_NUMBER() OVER (ORDER BY remainder ASC, stake_id ASC) AS rank,
+          v_bundle_price - SUM(base_cents) OVER () AS leftover_cents
+        FROM shares
+      )
+      UPDATE order_item_stakes s
+      SET stake_amount = ranked.base_cents + CASE WHEN ranked.rank <= ranked.leftover_cents THEN 1 ELSE 0 END
+      FROM ranked
+      WHERE s.stake_id = ranked.stake_id;
+
+      RETURN NULL;
+    END IF;
+  END IF;
+
+  UPDATE order_item_stakes
+  SET stake_amount = NEW.stake_qty * v_unit_price
+  WHERE stake_id = NEW.stake_id;
+
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SET search_path = public, pg_temp;
+
+CREATE TRIGGER trg_sync_stake_amount_on_stake_qty
+AFTER INSERT OR UPDATE OF stake_qty ON order_item_stakes
+FOR EACH ROW EXECUTE FUNCTION sync_stake_amount_on_stake_qty();

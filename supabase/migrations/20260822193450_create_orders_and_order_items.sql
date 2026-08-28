@@ -50,7 +50,7 @@ CREATE TABLE order_items (
     -- unit_price: fixed at creation for threshold_bundle; live for tiered
 );
 
--- FKs, joined constantly (check_stake_capacity, apply_smallest_remainder_apportionment,
+-- FKs, joined constantly
 -- order_item_resolution) -- not auto-indexed by Postgres.
 CREATE INDEX idx_order_items_order_id ON order_items (order_id);
 CREATE INDEX idx_order_items_product_id ON order_items (product_id);
