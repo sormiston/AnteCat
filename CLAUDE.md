@@ -7,10 +7,69 @@ After any and all code changes, check that steering documents are free of misali
 @SPEC.md.
 @AGENTS.md
 @.claude/context/backend.md
-@ROADMAP.md
 @README.md
 
 Always check the project steering documents before work.
+
+## Code style
+
+### SQL
+
+Do not be overly verbose when writing comments in SQL migration files.  
+
+#### SQL comment style Example 1
+
+❌ This is too long:
+```
+-- DEFAULT 0 exists only so callers never need to supply unit_price (and
+-- Insert types stay optional here) -- trg_init_order_item_unit_price
+-- overwrites it on every insert. The 0 never survives to be checked:
+-- Postgres applies defaults, then fires BEFORE row triggers, and only then
+-- evaluates CHECK constraints.
+```
+
+✅ This is good:
+
+```
+-- DEFAULT 0 exists only so callers never need to supply unit_price (and
+-- Insert types stay optional here) -- trg_init_order_item_unit_price
+-- overwrites it on every insert.
+```
+
+#### SQL comment style Example 2
+
+❌ This is too long:
+```
+-- Trigger: derive unit_price at creation from the product's pricing config, so
+-- it is never caller-supplied. BEFORE (not AFTER) specifically so it can assign
+-- NEW.unit_price in place and return the row -- no UPDATE statement, so unlike
+-- the order_items triggers in the next migration this one starts no cascade and
+-- cannot recurse.
+--
+-- tiered:           the qty_floor = 0 baseline tier -- the same value
+--                   sync_tiered_unit_price would derive at quantity = 0, so the
+--                   creation path and the maintenance path agree by construction.
+-- threshold_bundle: bundle_price / threshold_qty. Integer division, so this
+--                   floors (5000/6 = 833) and is deliberately lossy: 833 x 6 is
+--                   4998, two cents short of the bundle price. That gap is
+--                   expected -- a bundle's unit_price is a per-unit approximation
+--                   for display and for pre-threshold stake amounts, never an
+--                   authoritative total. Once the order closes, apportion_bundle_stakes
+--                   restates every stake on a filled item so they sum to exactly
+--                   bundle_price. Do not "fix" the two cents.
+```
+
+✅ This is good:
+```
+-- Trigger: derive unit_price at creation from the product's pricing config, so
+-- it is never caller-supplied.
+--
+-- tiered:           the qty_floor = 0 baseline tier
+-- threshold_bundle: bundle_price / threshold_qty. Integer division, so this
+--                   deliberately floors to an ideal unit_price.  Any remainder cents must
+--                   be apportioned when bundle fills.
+```
+
 
 Currently, this project is developing against a LOCAL supabase stack with no linked remote.  When asked to write SQL migrations, check that this remains the case.  If it does remain the case, then do not prefer to write new migrations to implement schema changes, rather, edit the old ones.
 
