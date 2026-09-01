@@ -17,10 +17,11 @@ CREATE TABLE product_bundle_thresholds (
     -- per-unit price (cents) = bundle_price / threshold_qty
 );
 
--- tiered products only
-CREATE TABLE product_price_tier_plans (
-    product_id  INTEGER PRIMARY KEY REFERENCES products(product_id),
-    tiers       JSONB NOT NULL
-    -- e.g. {"1": 2499, "5": 2150, "10": 1800}
-    -- keys = min cumulative qty (string), values = unit price in cents at that qty and above
+-- tiered products only: one row per price break. (0, 2499), (5, 2150), (10, 1800)
+-- means 2499/unit from qty 0, 2150 from qty 5, 1800 from qty 10 and up.
+CREATE TABLE product_price_tiers (
+    product_id    INTEGER NOT NULL REFERENCES products(product_id),
+    qty_floor  INTEGER NOT NULL CHECK (qty_floor >= 0),
+    unit_price    INTEGER NOT NULL CHECK (unit_price > 0),
+    PRIMARY KEY (product_id, qty_floor)
 );

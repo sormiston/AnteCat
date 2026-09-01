@@ -8,8 +8,10 @@ INSERT INTO products (product_id, name, description, pricing_type) VALUES
 INSERT INTO product_bundle_thresholds (product_id, threshold_qty, bundle_price) VALUES
   (1, 6, 5000);
 
-INSERT INTO product_price_tier_plans (product_id, tiers) VALUES
-  (2, '{"100": 2499, "500": 2150, "1000": 1800}');
+INSERT INTO product_price_tiers (product_id, qty_floor, unit_price) VALUES
+  (2, 0, 2499),
+  (2, 5, 2150),
+  (2, 10, 1800);
 
 SELECT setval('products_product_id_seq', (SELECT MAX(product_id) FROM products));
 
