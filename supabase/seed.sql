@@ -40,9 +40,9 @@ INSERT INTO auth.identities (
   (gen_random_uuid(), 'a4444444-4444-4444-4444-444444444444', 'a4444444-4444-4444-4444-444444444444', jsonb_build_object('sub', 'a4444444-4444-4444-4444-444444444444', 'email', 'member4@example.test'), 'email', now(), now(), now()),
   (gen_random_uuid(), 'a5555555-5555-5555-5555-555555555555', 'a5555555-5555-5555-5555-555555555555', jsonb_build_object('sub', 'a5555555-5555-5555-5555-555555555555', 'email', 'member5@example.test'), 'email', now(), now(), now());
 
--- Syndicate + membership. check_admin_is_member() is a deferred constraint
--- trigger that only fires at COMMIT, so the syndicate row and its admin's
--- membership row must land in one explicit transaction.
+-- Syndicate + membership. Inserted in one explicit transaction on the
+-- convention that admin_user_id should also be a syndicate_members row,
+-- even though nothing currently enforces that (see backend.md).
 BEGIN;
 
 INSERT INTO syndicates (syndicate_id, name, admin_user_id) VALUES
