@@ -19,7 +19,7 @@ export type Database = {
         }
         Insert: {
           order_item_id: number
-          stake_amount: number
+          stake_amount?: number
           stake_id?: number
           stake_qty: number
           user_id: string
@@ -63,7 +63,7 @@ export type Database = {
           order_item_id?: number
           product_id: number
           quantity?: number
-          unit_price: number
+          unit_price?: number
         }
         Update: {
           max_quantity?: number | null
@@ -154,24 +154,27 @@ export type Database = {
           },
         ]
       }
-      product_price_tier_plans: {
+      product_price_tiers: {
         Row: {
           product_id: number
-          tiers: Json
+          qty_floor: number
+          unit_price: number
         }
         Insert: {
           product_id: number
-          tiers: Json
+          qty_floor: number
+          unit_price: number
         }
         Update: {
           product_id?: number
-          tiers?: Json
+          qty_floor?: number
+          unit_price?: number
         }
         Relationships: [
           {
-            foreignKeyName: "product_price_tier_plans_product_id_fkey"
+            foreignKeyName: "product_price_tiers_product_id_fkey"
             columns: ["product_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["product_id"]
           },
@@ -184,8 +187,6 @@ export type Database = {
           name: string
           pricing_type: Database["public"]["Enums"]["product_pricing_type"]
           product_id: number
-          qty_step: number
-          unit_of_quantity: string
         }
         Insert: {
           created_at?: string | null
@@ -193,8 +194,6 @@ export type Database = {
           name: string
           pricing_type: Database["public"]["Enums"]["product_pricing_type"]
           product_id?: number
-          qty_step: number
-          unit_of_quantity: string
         }
         Update: {
           created_at?: string | null
@@ -202,8 +201,6 @@ export type Database = {
           name?: string
           pricing_type?: Database["public"]["Enums"]["product_pricing_type"]
           product_id?: number
-          qty_step?: number
-          unit_of_quantity?: string
         }
         Relationships: []
       }
@@ -264,7 +261,10 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      apportion_bundle_stakes: {
+        Args: { p_order_id: number }
+        Returns: undefined
+      }
     }
     Enums: {
       order_item_resolution_status: "open" | "succeeded" | "maxed_out"

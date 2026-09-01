@@ -4,12 +4,13 @@ CREATE TABLE order_item_stakes (
     order_item_id      INTEGER NOT NULL REFERENCES order_items(order_item_id),
     user_id            UUID NOT NULL REFERENCES auth.users(id),
     stake_qty          INTEGER NOT NULL CHECK (stake_qty > 0),
-    stake_amount       INTEGER NOT NULL CHECK (stake_amount >= 0)
-    -- stake_amount is a ledger figure only -- no payment processing in-app
+    stake_amount       INTEGER NOT NULL DEFAULT 0 CHECK (stake_amount >= 0)
+    -- DEFAULT 0 exists only so callers never need to supply it (and Insert
+    -- types stay optional here) -- trg_sync_stake_amount_on_stake_qty
+    -- overwrites it unconditionally on every insert.
 );
 
--- FKs, read on every stake write by every trigger below -- not auto-indexed
--- by Postgres.
+-- FKs, read on every stake write by the triggers below -- not auto-indexed.
 CREATE INDEX idx_order_item_stakes_order_item_id ON order_item_stakes (order_item_id);
 CREATE INDEX idx_order_item_stakes_user_id ON order_item_stakes (user_id);
 
@@ -23,23 +24,23 @@ DECLARE
   v_max_qty      INTEGER;
   v_current_qty  INTEGER;
 BEGIN
-  -- Lock the parent order_item row so concurrent stakes on the same item
-  -- serialize here instead of racing: under MVCC/READ COMMITTED, two
-  -- concurrent inserts could otherwise both read the same pre-insert SUM,
-  -- both pass the ceiling check, and together overflow it (write skew).
-  PERFORM 1 FROM order_items WHERE order_item_id = NEW.order_item_id FOR UPDATE;
-
+  -- FOR UPDATE OF oi locks only the order_item row so concurrent stakes
+  -- serialize here instead of both reading the same pre-insert SUM and
+  -- together overflowing the ceiling -- without OF oi, the join below would
+  -- also lock the matched products/product_bundle_thresholds rows, needlessly
+  -- serializing unrelated stakes that share the same product.
   SELECT p.pricing_type, pbt.threshold_qty, oi.max_quantity
     INTO v_pricing_type, v_threshold, v_max_qty
   FROM order_items oi
   JOIN products p ON p.product_id = oi.product_id
   LEFT JOIN product_bundle_thresholds pbt ON pbt.product_id = p.product_id
-  WHERE oi.order_item_id = NEW.order_item_id;
+  WHERE oi.order_item_id = NEW.order_item_id
+  FOR UPDATE OF oi;
 
   SELECT COALESCE(SUM(stake_qty), 0) INTO v_current_qty
   FROM order_item_stakes
   WHERE order_item_id = NEW.order_item_id
-    AND stake_id != COALESCE(NEW.stake_id, -1);  -- exclude self on UPDATE
+    AND user_id != NEW.user_id;  -- exclude own prior stake (UPDATE or ON CONFLICT DO UPDATE)
 
   IF v_pricing_type = 'threshold_bundle' AND v_current_qty + NEW.stake_qty > v_threshold THEN
     RAISE EXCEPTION 'stake would exceed bundle threshold of % (already at %)', v_threshold, v_current_qty;
@@ -54,40 +55,63 @@ END;
 $$ LANGUAGE plpgsql SET search_path = public, pg_temp;
 
 CREATE TRIGGER trg_check_stake_capacity
-BEFORE INSERT OR UPDATE ON order_item_stakes
+BEFORE INSERT OR UPDATE OF stake_qty ON order_item_stakes
 FOR EACH ROW EXECUTE FUNCTION check_stake_capacity();
 
--- Trigger: a staker must be a member of the syndicate that owns the parent order
--- (order_item_stakes.user_id -> order_items -> orders -> syndicate_id)
-CREATE OR REPLACE FUNCTION check_stake_user_is_member() RETURNS TRIGGER AS $$
+-- Trigger: stakes are only writable while the parent order is open. This is
+-- what makes close-time apportionment final -- a later stake write would leave
+-- every sibling's apportioned amount stale.
+CREATE OR REPLACE FUNCTION check_stake_order_is_open() RETURNS TRIGGER AS $$
 DECLARE
-  v_syndicate_id INTEGER;
+  v_order_item_id INTEGER;
+  v_status        order_status;
 BEGIN
-  SELECT o.syndicate_id INTO v_syndicate_id
-  FROM order_items oi
-  JOIN orders o ON o.order_id = oi.order_id
-  WHERE oi.order_item_id = NEW.order_item_id;
-
-  IF NOT EXISTS (
-    SELECT 1 FROM syndicate_members
-    WHERE syndicate_id = v_syndicate_id
-      AND user_id = NEW.user_id
-  ) THEN
-    RAISE EXCEPTION 'user_id must be a member of the syndicate that owns this order';
+  -- service_role may always delete a stake, even once closed -- the only path
+  -- that lets admin/test cleanup remove a closed order's rows. INSERT/UPDATE
+  -- stay blocked for every role, including service_role.
+  IF TG_OP = 'DELETE' AND current_user = 'service_role' THEN
+    RETURN OLD;
   END IF;
 
+  IF TG_OP = 'DELETE' THEN
+    v_order_item_id := OLD.order_item_id;
+  ELSE
+    v_order_item_id := NEW.order_item_id;
+  END IF;
+
+  -- FOR SHARE, not a plain read: a concurrent close is invisible under READ
+  -- COMMITTED until it commits, so without this an item could fill after
+  -- apportion_bundle_stakes had already skipped it as unfilled -- and status
+  -- only moves forward, so nothing would ever settle it. SHARE rather than
+  -- UPDATE so concurrent stakes on one order still don't serialize.
+  SELECT o.status INTO v_status
+  FROM order_items oi
+  JOIN orders o ON o.order_id = oi.order_id
+  WHERE oi.order_item_id = v_order_item_id
+  FOR SHARE OF o;
+
+  IF v_status != 'open' THEN
+    RAISE EXCEPTION 'stakes cannot be changed once the order is %', v_status;
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SET search_path = public, pg_temp;
 
-CREATE TRIGGER trg_check_stake_user_is_member
-BEFORE INSERT OR UPDATE ON order_item_stakes
-FOR EACH ROW EXECUTE FUNCTION check_stake_user_is_member();
+CREATE TRIGGER trg_check_stake_order_is_open
+BEFORE INSERT OR UPDATE OF stake_qty OR DELETE ON order_item_stakes
+FOR EACH ROW EXECUTE FUNCTION check_stake_order_is_open();
+
+-- NOTE: no trigger enforces order_item_stakes.user_id membership in the
+-- syndicate that owns the parent order. See "Open questions" in
+-- .claude/context/backend.md.
 
 -- Trigger: keep order_items.quantity in sync with SUM(order_item_stakes.stake_qty).
--- Runs AFTER the two BEFORE triggers above have already rejected any overflow,
--- so this write-back can never violate order_items' own quantity <= max_quantity
--- CHECK.
+-- Runs after the BEFORE triggers above have rejected any overflow, so this
+-- write-back can never violate order_items' quantity <= max_quantity CHECK.
 CREATE OR REPLACE FUNCTION sync_order_item_quantity() RETURNS TRIGGER AS $$
 DECLARE
   v_order_item_id INTEGER;
@@ -108,88 +132,174 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SET search_path = public, pg_temp;
 
+-- OF binds to UPDATE only. stake_qty is the sole column that can invalidate the
+-- sum, since order_item_id is immutable (enforcement pending, see #3). Scoping
+-- it this way also stops sync_stake_amounts_on_unit_price's bulk stake_amount
+-- rewrite from re-entering this trigger once per repriced row.
 CREATE TRIGGER trg_sync_order_item_quantity
-AFTER INSERT OR UPDATE OR DELETE ON order_item_stakes
+AFTER INSERT OR UPDATE OF stake_qty OR DELETE ON order_item_stakes
 FOR EACH ROW EXECUTE FUNCTION sync_order_item_quantity();
 
--- Trigger: keeps order_item_stakes.stake_amount authoritative on every
--- stake_qty change, via two mutually exclusive paths:
+-- Trigger: derive stake_amount from the item's current unit_price, so it is
+-- never caller-supplied. BEFORE, so it assigns NEW.stake_amount in place --
+-- no UPDATE, so it starts no cascade and cannot recurse.
 --
--- 1. Threshold-bundle apportionment: the instant a threshold_bundle
---    order_item's stakes fill its threshold_qty, re-derive every
---    constituent stake's stake_amount by smallest-remainder-first
---    apportionment so they sum exactly to bundle_price. Each stake's ideal
---    share is bundle_price * stake_qty / threshold_qty; every stake gets
---    floor(ideal share); the cents left over (always fewer than there are
---    stakes) go one-per-stake to whichever stakes had the SMALLEST
---    fractional remainder, ties broken by ascending stake_id for
---    determinism. This is the mirror of the Hamilton (largest-remainder)
---    method: it routes the marginal cent to whoever's ideal share was
---    already closest to the floor, at the cost of maximizing (rather than
---    minimizing) aggregate rounding distortion across the item's stakes.
--- 2. Plain default: for tiered items (always), and for threshold-bundle
---    items still below threshold_qty, stake_amount is simply
---    stake_qty * unit_price. This is what makes stake_amount authoritative
---    from the very first INSERT rather than trusting caller input -- a
---    PostgREST caller can still send any value in the same request, but it
---    is unconditionally overwritten here.  TODO: lock stake_amount with a policy
---    since it is always a computed value, and should never be written via INSERT.
---    
-
+-- A tiered insert that crosses a tier boundary reads the pre-crossing
+-- unit_price here, then trg_sync_stake_amounts_on_unit_price rewrites every
+-- stake on the item moments later -- so the row self-corrects.
+--
+-- TODO: lock stake_amount with a policy since it is always computed and should
+-- never be written via INSERT.
 CREATE OR REPLACE FUNCTION sync_stake_amount_on_stake_qty() RETURNS TRIGGER AS $$
 DECLARE
-  v_pricing_type   product_pricing_type;
-  v_threshold_qty  INTEGER;
-  v_bundle_price   INTEGER;
-  v_unit_price     INTEGER;
-  v_total_qty      INTEGER;
+  v_unit_price INTEGER;
 BEGIN
-  SELECT p.pricing_type, pbt.threshold_qty, pbt.bundle_price, oi.unit_price
-    INTO v_pricing_type, v_threshold_qty, v_bundle_price, v_unit_price
-  FROM order_items oi
-  JOIN products p ON p.product_id = oi.product_id
-  LEFT JOIN product_bundle_thresholds pbt ON pbt.product_id = p.product_id
-  WHERE oi.order_item_id = NEW.order_item_id;
+  SELECT unit_price INTO v_unit_price
+  FROM order_items
+  WHERE order_item_id = NEW.order_item_id;
 
-  IF v_pricing_type = 'threshold_bundle' THEN
-    SELECT COALESCE(SUM(stake_qty), 0) INTO v_total_qty
-    FROM order_item_stakes
-    WHERE order_item_id = NEW.order_item_id;
+  NEW.stake_amount := NEW.stake_qty * v_unit_price;
 
-    IF v_total_qty >= v_threshold_qty THEN
-      WITH shares AS (
-        SELECT
-          stake_id,
-          (v_bundle_price::BIGINT * stake_qty) / v_threshold_qty AS base_cents,
-          (v_bundle_price::BIGINT * stake_qty) % v_threshold_qty AS remainder
-        FROM order_item_stakes
-        WHERE order_item_id = NEW.order_item_id
-      ),
-      ranked AS (
-        SELECT
-          stake_id,
-          base_cents,
-          ROW_NUMBER() OVER (ORDER BY remainder ASC, stake_id ASC) AS rank,
-          v_bundle_price - SUM(base_cents) OVER () AS leftover_cents
-        FROM shares
-      )
-      UPDATE order_item_stakes s
-      SET stake_amount = ranked.base_cents + CASE WHEN ranked.rank <= ranked.leftover_cents THEN 1 ELSE 0 END
-      FROM ranked
-      WHERE s.stake_id = ranked.stake_id;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public, pg_temp;
 
-      RETURN NULL;
-    END IF;
+-- Not DELETE: a removed stake has no stake_amount to derive, and NEW is
+-- unassigned there.
+CREATE TRIGGER trg_sync_stake_amount_on_stake_qty
+BEFORE INSERT OR UPDATE OF stake_qty ON order_item_stakes
+FOR EACH ROW EXECUTE FUNCTION sync_stake_amount_on_stake_qty();
+
+-- Trigger: keep order_items.unit_price live for tiered items as quantity
+-- crosses price-tier boundaries. 
+CREATE OR REPLACE FUNCTION sync_tiered_unit_price() RETURNS TRIGGER AS $$
+DECLARE
+  v_pricing_type product_pricing_type;
+  v_new_price    INTEGER;
+BEGIN
+  SELECT pricing_type INTO v_pricing_type
+  FROM products
+  WHERE product_id = NEW.product_id;
+
+  IF v_pricing_type != 'tiered' THEN
+    RETURN NULL;
   END IF;
 
-  UPDATE order_item_stakes
-  SET stake_amount = NEW.stake_qty * v_unit_price
-  WHERE stake_id = NEW.stake_id;
+  SELECT unit_price INTO v_new_price
+  FROM product_price_tiers
+  WHERE product_id = NEW.product_id
+    AND qty_floor <= NEW.quantity
+  ORDER BY qty_floor DESC
+  LIMIT 1;
+
+  IF v_new_price IS NULL THEN
+    RAISE EXCEPTION 'quantity % has no covering price tier for product %', NEW.quantity, NEW.product_id;
+  END IF;
+
+  IF v_new_price != NEW.unit_price THEN
+    UPDATE order_items
+    SET unit_price = v_new_price
+    WHERE order_item_id = NEW.order_item_id;
+  END IF;
 
   RETURN NULL;
 END;
 $$ LANGUAGE plpgsql SET search_path = public, pg_temp;
 
-CREATE TRIGGER trg_sync_stake_amount_on_stake_qty
-AFTER INSERT OR UPDATE OF stake_qty ON order_item_stakes
-FOR EACH ROW EXECUTE FUNCTION sync_stake_amount_on_stake_qty();
+CREATE TRIGGER trg_sync_tiered_unit_price
+AFTER UPDATE OF quantity ON order_items
+FOR EACH ROW EXECUTE FUNCTION sync_tiered_unit_price();
+
+-- Trigger: retroactively reprice every stake on a tiered item the instant
+-- order_items.unit_price changes (fired by trg_sync_tiered_unit_price above),
+-- so the ledger reflects current tier pricing rather than the price at each
+-- stake's creation time. Guarded to tiered so it never touches bundle
+-- apportionment.
+CREATE OR REPLACE FUNCTION sync_stake_amounts_on_unit_price() RETURNS TRIGGER AS $$
+DECLARE
+  v_pricing_type product_pricing_type;
+BEGIN
+  SELECT pricing_type INTO v_pricing_type
+  FROM products
+  WHERE product_id = NEW.product_id;
+
+  IF v_pricing_type != 'tiered' THEN
+    RETURN NULL;
+  END IF;
+
+  UPDATE order_item_stakes
+  SET stake_amount = stake_qty * NEW.unit_price
+  WHERE order_item_id = NEW.order_item_id;
+
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SET search_path = public, pg_temp;
+
+CREATE TRIGGER trg_sync_stake_amounts_on_unit_price
+AFTER UPDATE OF unit_price ON order_items
+FOR EACH ROW EXECUTE FUNCTION sync_stake_amounts_on_unit_price();
+
+-- Settle a closing order's filled bundles: every stake takes
+-- floor(bundle_price * stake_qty / threshold_qty), and the leftover cents go
+-- one-per-stake to the SMALLEST fractional remainders, ties broken by ascending
+-- stake_id. Stakes then sum to exactly bundle_price.
+--
+-- Runs once at close rather than the instant an item fills, so an item that
+-- fills and un-fills during the open window never strands remainder cents on
+-- stakes that are no longer part of a complete pack. Unfilled bundles are
+-- skipped: nothing resolved, so there is nothing to settle.
+CREATE OR REPLACE FUNCTION apportion_bundle_stakes(p_order_id INTEGER) RETURNS VOID AS $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN
+    SELECT oi.order_item_id, pbt.threshold_qty, pbt.bundle_price
+    FROM order_items oi
+    JOIN products p ON p.product_id = oi.product_id
+    JOIN product_bundle_thresholds pbt ON pbt.product_id = p.product_id
+    WHERE oi.order_id = p_order_id
+      AND p.pricing_type = 'threshold_bundle'
+      AND oi.quantity >= pbt.threshold_qty
+  LOOP
+    WITH shares AS (
+      SELECT
+        stake_id,
+        (r.bundle_price::BIGINT * stake_qty) / r.threshold_qty AS base_cents,
+        (r.bundle_price::BIGINT * stake_qty) % r.threshold_qty AS remainder
+      FROM order_item_stakes
+      WHERE order_item_id = r.order_item_id
+    ),
+    ranked AS (
+      SELECT
+        stake_id,
+        base_cents,
+        ROW_NUMBER() OVER (ORDER BY remainder ASC, stake_id ASC) AS rank,
+        r.bundle_price - SUM(base_cents) OVER () AS leftover_cents
+      FROM shares
+    )
+    UPDATE order_item_stakes s
+    SET stake_amount = ranked.base_cents + CASE WHEN ranked.rank <= ranked.leftover_cents THEN 1 ELSE 0 END
+    FROM ranked
+    WHERE s.stake_id = ranked.stake_id;
+  END LOOP;
+END;
+$$ LANGUAGE plpgsql SET search_path = public, pg_temp;
+
+-- Trigger: apportion on open -> closed only, so the later closed -> executed
+-- move cannot re-run it. Writes only stake_amount, so neither stake trigger
+-- above re-enters -- both are scoped off that column.
+CREATE OR REPLACE FUNCTION apportion_on_close() RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD.status = 'open' AND NEW.status = 'closed' THEN
+    PERFORM apportion_bundle_stakes(NEW.order_id);
+  END IF;
+
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SET search_path = public, pg_temp;
+
+-- Lives in this migration, not the orders one, because apportion_bundle_stakes
+-- reads order_item_stakes -- created above.
+CREATE TRIGGER trg_apportion_on_close
+AFTER UPDATE OF status ON orders
+FOR EACH ROW EXECUTE FUNCTION apportion_on_close();

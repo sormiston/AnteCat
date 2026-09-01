@@ -1,6 +1,4 @@
 -- Orders: coordination records, not fulfillment records. Belong to syndicates.
--- Opened/closed/executed exclusively by the syndicate's one admin (syndicates.admin_user_id),
--- so no separate actor column is stored per action -- it would be redundant.
 CREATE TYPE order_status AS ENUM ('open', 'closed', 'executed');
 
 CREATE TABLE orders (
@@ -41,7 +39,10 @@ CREATE TABLE order_items (
     order_id          INTEGER NOT NULL REFERENCES orders(order_id),
     product_id        INTEGER NOT NULL REFERENCES products(product_id),
     quantity          INTEGER NOT NULL DEFAULT 0,
-    unit_price        INTEGER NOT NULL CHECK (unit_price > 0),
+    unit_price        INTEGER NOT NULL DEFAULT 0 CHECK (unit_price > 0),
+    -- DEFAULT 0 exists only so callers never need to supply unit_price (and
+    -- Insert types stay optional here) -- trg_init_order_item_unit_price
+    -- overwrites it on every insert.
     max_quantity      INTEGER CHECK (max_quantity IS NULL OR max_quantity > 0),
     -- tiered items only; NULL = uncapped. Threshold items are capped via threshold_qty instead.
     CHECK (quantity >= 0),
@@ -51,6 +52,48 @@ CREATE TABLE order_items (
 );
 
 -- FKs, joined constantly
--- order_item_resolution) -- not auto-indexed by Postgres.
+-- not auto-indexed by Postgres.
 CREATE INDEX idx_order_items_order_id ON order_items (order_id);
 CREATE INDEX idx_order_items_product_id ON order_items (product_id);
+
+-- Trigger: derive unit_price at creation from the product's pricing config, so
+-- it is never caller-supplied.
+--
+-- tiered:           the qty_floor = 0 baseline tier
+-- threshold_bundle: bundle_price / threshold_qty. Integer division, so this
+--                   deliberately floors to an ideal unit_price. Any remainder cents
+--                   must be apportioned when the bundle fills.
+CREATE OR REPLACE FUNCTION init_order_item_unit_price() RETURNS TRIGGER AS $$
+DECLARE
+  v_pricing_type product_pricing_type;
+BEGIN
+  SELECT pricing_type INTO v_pricing_type
+  FROM products
+  WHERE product_id = NEW.product_id;
+
+  IF v_pricing_type = 'tiered' THEN
+    SELECT unit_price INTO NEW.unit_price
+    FROM product_price_tiers
+    WHERE product_id = NEW.product_id
+      AND qty_floor = 0;
+
+    IF NEW.unit_price IS NULL THEN
+      RAISE EXCEPTION 'tiered product % has no qty_floor = 0 baseline tier', NEW.product_id;
+    END IF;
+  ELSE
+    SELECT bundle_price / threshold_qty INTO NEW.unit_price
+    FROM product_bundle_thresholds
+    WHERE product_id = NEW.product_id;
+
+    IF NEW.unit_price IS NULL THEN
+      RAISE EXCEPTION 'threshold_bundle product % has no product_bundle_thresholds row', NEW.product_id;
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public, pg_temp;
+
+CREATE TRIGGER trg_init_order_item_unit_price
+BEFORE INSERT ON order_items
+FOR EACH ROW EXECUTE FUNCTION init_order_item_unit_price();

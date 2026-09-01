@@ -66,16 +66,21 @@ INSERT INTO orders (order_id, syndicate_id, status, deadline_at) VALUES
 
 SELECT setval('orders_order_id_seq', (SELECT MAX(order_id) FROM orders));
 
-INSERT INTO order_items (order_item_id, order_id, product_id, unit_price, max_quantity) VALUES
-  (1, 1, 1, 833, NULL),   -- Widget 6-Pack
-  (2, 1, 2, 2499, 2500);    -- Bulk Gizmos
+-- unit_price is omitted deliberately: trg_init_order_item_unit_price derives it
+-- from each product's pricing config (833 = 5000/6 for the bundle, 2499 from the
+-- qty_floor = 0 tier for the tiered product).
+INSERT INTO order_items (order_item_id, order_id, product_id, max_quantity) VALUES
+  (1, 1, 1, NULL),   -- Widget 6-Pack
+  (2, 1, 2, 2500);   -- Bulk Gizmos
 
 SELECT setval('order_items_order_item_id_seq', (SELECT MAX(order_item_id) FROM order_items));
 
--- order_items.quantity is trigger-maintained off these stakes.
-INSERT INTO order_item_stakes (order_item_id, user_id, stake_qty, stake_amount) VALUES
-  (1, 'a2222222-2222-2222-2222-222222222222', 2, 1666),
-  (1, 'a3333333-3333-3333-3333-333333333333', 1, 833),
-  (2, 'a4444444-4444-4444-4444-444444444444', 200, 4998);
+-- order_items.quantity is trigger-maintained off these stakes. stake_amount is
+-- omitted for the same reason unit_price is above: trg_sync_stake_amount_on_stake_qty
+-- derives it from the item's unit_price.
+INSERT INTO order_item_stakes (order_item_id, user_id, stake_qty) VALUES
+  (1, 'a2222222-2222-2222-2222-222222222222', 2),
+  (1, 'a3333333-3333-3333-3333-333333333333', 1),
+  (2, 'a4444444-4444-4444-4444-444444444444', 3);
 
 SELECT setval('order_item_stakes_stake_id_seq', (SELECT MAX(stake_id) FROM order_item_stakes));
