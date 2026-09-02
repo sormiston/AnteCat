@@ -1,5 +1,14 @@
 {
+  "permissions": {
+    "allow": [],
+    "deny": [
+      "Bash(**/.env*)",
+      "Read(**/.env*)",
+      "Edit(**/.env*)"
+    ],
+    "defaultMode": "auto"
+  },
   "enabledPlugins": {
-    "expo@claude-plugins-official": true
+    "expo@claude-plugins-official": false
   }
 }

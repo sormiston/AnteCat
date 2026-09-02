@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "KittyKatch",
-    "slug": "KittyKatch",
+    "name": "AnteCat",
+    "slug": "AnteCat",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "kittykatch",
+    "scheme": "antecat",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon"
