@@ -8,6 +8,8 @@ GRANT USAGE ON SCHEMA public TO service_role;
 GRANT SELECT ON products TO service_role;
 GRANT SELECT ON product_bundle_thresholds TO service_role;
 GRANT SELECT ON product_price_tiers TO service_role;
+GRANT SELECT ON syndicates TO service_role;
+GRANT SELECT ON syndicate_members TO service_role;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON orders TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON order_items TO service_role;

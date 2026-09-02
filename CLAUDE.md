@@ -70,6 +70,7 @@ Do not be overly verbose when writing comments in SQL migration files.
 --                   be apportioned when bundle fills.
 ```
 
+Never modify comments signed "SO", these are by me.
 
 Currently, this project is developing against a LOCAL supabase stack with no linked remote.  When asked to write SQL migrations, check that this remains the case.  If it does remain the case, then do not prefer to write new migrations to implement schema changes, rather, edit the old ones.
 

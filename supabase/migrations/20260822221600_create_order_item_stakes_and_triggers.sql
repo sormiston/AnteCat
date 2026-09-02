@@ -4,10 +4,14 @@ CREATE TABLE order_item_stakes (
     order_item_id      INTEGER NOT NULL REFERENCES order_items(order_item_id),
     user_id            UUID NOT NULL REFERENCES auth.users(id),
     stake_qty          INTEGER NOT NULL CHECK (stake_qty > 0),
-    stake_amount       INTEGER NOT NULL DEFAULT 0 CHECK (stake_amount >= 0)
+    stake_amount       INTEGER NOT NULL DEFAULT 0 CHECK (stake_amount >= 0),
     -- DEFAULT 0 exists only so callers never need to supply it (and Insert
     -- types stay optional here) -- trg_sync_stake_amount_on_stake_qty
     -- overwrites it unconditionally on every insert.
+    UNIQUE (order_item_id, user_id)
+    -- One stake row per member per item -- a second commitment is an upsert
+    -- (UPDATE stake_qty), not a second row. check_stake_capacity's own-stake
+    -- exclusion below assumes this.
 );
 
 -- FKs, read on every stake write by the triggers below -- not auto-indexed.
@@ -40,7 +44,7 @@ BEGIN
   SELECT COALESCE(SUM(stake_qty), 0) INTO v_current_qty
   FROM order_item_stakes
   WHERE order_item_id = NEW.order_item_id
-    AND user_id != NEW.user_id;  -- exclude own prior stake (UPDATE or ON CONFLICT DO UPDATE)
+    AND (TG_OP = 'INSERT' OR stake_id != NEW.stake_id);  -- SO: discount existing row from sum, to not double count
 
   IF v_pricing_type = 'threshold_bundle' AND v_current_qty + NEW.stake_qty > v_threshold THEN
     RAISE EXCEPTION 'stake would exceed bundle threshold of % (already at %)', v_threshold, v_current_qty;
@@ -241,8 +245,9 @@ FOR EACH ROW EXECUTE FUNCTION sync_stake_amounts_on_unit_price();
 
 -- Settle a closing order's filled bundles: every stake takes
 -- floor(bundle_price * stake_qty / threshold_qty), and the leftover cents go
--- one-per-stake to the SMALLEST fractional remainders, ties broken by ascending
--- stake_id. Stakes then sum to exactly bundle_price.
+-- one-per-stake to the LARGEST fractional remainders (standard Hamilton
+-- apportionment), ties broken by ascending stake_id. Stakes then sum to
+-- exactly bundle_price.
 --
 -- Runs once at close rather than the instant an item fills, so an item that
 -- fills and un-fills during the open window never strands remainder cents on
@@ -273,7 +278,7 @@ BEGIN
       SELECT
         stake_id,
         base_cents,
-        ROW_NUMBER() OVER (ORDER BY remainder ASC, stake_id ASC) AS rank,
+        ROW_NUMBER() OVER (ORDER BY remainder DESC, stake_id ASC) AS rank,
         r.bundle_price - SUM(base_cents) OVER () AS leftover_cents
       FROM shares
     )

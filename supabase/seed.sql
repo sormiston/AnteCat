@@ -79,8 +79,9 @@ SELECT setval('order_items_order_item_id_seq', (SELECT MAX(order_item_id) FROM o
 -- omitted for the same reason unit_price is above: trg_sync_stake_amount_on_stake_qty
 -- derives it from the item's unit_price.
 INSERT INTO order_item_stakes (order_item_id, user_id, stake_qty) VALUES
-  (1, 'a2222222-2222-2222-2222-222222222222', 2),
-  (1, 'a3333333-3333-3333-3333-333333333333', 1),
-  (2, 'a4444444-4444-4444-4444-444444444444', 3);
+  (1, 'a2222222-2222-2222-2222-222222222222', 1),
+  (1, 'a3333333-3333-3333-3333-333333333333', 2),
+  (2, 'a4444444-4444-4444-4444-444444444444', 3),
+  (1, 'a4444444-4444-4444-4444-444444444444', 2);
 
 SELECT setval('order_item_stakes_stake_id_seq', (SELECT MAX(stake_id) FROM order_item_stakes));
