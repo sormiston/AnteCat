@@ -42,9 +42,9 @@ BEGIN
   FOR UPDATE OF oi;
 
   SELECT COALESCE(SUM(stake_qty), 0) INTO v_current_qty
-  FROM order_item_stakes
-  WHERE order_item_id = NEW.order_item_id
-    AND (TG_OP = 'INSERT' OR stake_id != NEW.stake_id);  -- SO: discount existing row from sum, to not double count
+  FROM order_item_stakes ois
+  JOIN order_items oi ON ois.order_item_id = oi.order_item_id
+  WHERE oi.order_item_id = NEW.order_item_id AND user_id != NEW.user_id;
 
   IF v_pricing_type = 'threshold_bundle' AND v_current_qty + NEW.stake_qty > v_threshold THEN
     RAISE EXCEPTION 'stake would exceed bundle threshold of % (already at %)', v_threshold, v_current_qty;
