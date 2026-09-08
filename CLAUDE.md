@@ -2,14 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-After any and all code changes, check that steering documents are free of misalignment or contradictions.  Steering documents are:
+After any and all code changes, check whether new changes require updates or editds to documentation. 
 
-@SPEC.md.
-@AGENTS.md
-@.claude/context/backend.md
-@README.md
+Documentation is:
+@docs/technical/backend.md
+@docs/technical/frontend.md
 
-Always check the project steering documents before work.
+Whenever creating or editing a TICKET file, consider it as 1 commit's worth of work towards the implementation of a plan defined in a SPEC file.  Ask to which SPEC file it belongs if it is not clearly linked via @ path linking.
+Keep in mind that @README.md is a public-facing document.  While it describes the vision of the app well, it is not necessarily a source of truth for technical implementation.
 
 ## Code style
 
@@ -74,6 +74,9 @@ Never modify comments signed "SO", these are by me.
 
 Currently, this project is developing against a LOCAL supabase stack with no linked remote.  When asked to write SQL migrations, check that this remains the case.  If it does remain the case, then do not prefer to write new migrations to implement schema changes, rather, edit the old ones.
 
+## SPEC writing
+When editing specs in dialog with the user, it is not necessary to leave notes about what was removed when the user requests something removed.
+
 ## Commands
 
 Package manager is pnpm (`packageManager` pinned in package.json — don't use npm/yarn).
@@ -92,6 +95,7 @@ Integration tests (`tests/`) hit a local Supabase instance directly — run `sup
 - The `expo reset-project` template strip has been run: `src/` currently holds only the blank scaffold (`src/app/_layout.tsx` with a bare `Stack`, `src/app/index.tsx` with a placeholder screen). The tabs/theming/platform-file structure previously documented here no longer exists — rebuild this section once the app is scaffolded back out.
 - **Routing**: Expo Router (file-based). Routes live in `src/app/`, not the conventional root-level `app/` — this is set via the `expo-router` plugin/main entry, so don't expect Expo's default docs paths to match without checking `src/app/`.
 - Import alias `@/*` → `src/*` and `@/assets/*` → `assets/*` (see `tsconfig.json`). Use these instead of relative `../../` paths.
+- @expo/ui and expo-glass-effect: both bind native SwiftUI/Jetpack Compose components and don't render on react-native-web. Since this demo has to run identically on iOS, Android, and web (three users, three devices, per the Goal above), the shared component inventory is built on portable View/Text/Pressable instead. Revisit these later, opt-in, for isolated native chrome behind Platform.OS !== 'web' with a portable fallback.
 
 ## Autogen code
 These are procedurally generated files.  Never edit them.

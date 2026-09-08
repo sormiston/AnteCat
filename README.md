@@ -1,147 +1,121 @@
-# AnteCat
+# SPEC.md
 
-## Get started
+> Product name TBD — this project is currently developed under the working/repo name **AnteCat**, which is a placeholder, not the intended product name.
 
-<!-- 1. Install dependencies
+---
 
-   ```bash
-   pnpm install
-   ```
+# Part 1 — Vision
 
-2. Start the app
+## What is this?
 
-   ```bash
-   pnpm start
-   ```
+A coordination platform for **syndicates** — small, high-trust groups of people who want to pool their commitments toward a bulk purchase of something, without any one of them fronting the whole thing or chasing the rest down by hand. The platform tracks who's committed to what and for how much, as a shared ledger. Implicit in the perfection of this concept is a hope and a vision: raising the purchasing power of individuals through cooperative action.
 
-In the output, you'll find options to open the app in a
+## Who is it for?
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+Initially: small, high-trust groups — the kind of group that already knows and trusts each other well enough to settle up business off the app. A group is a **syndicate**: one **admin**, plus **members**. The platform is deliberately general-purpose rather than built around one particular product, as we believe the same mechanics of cooperative buying should be applicable to any order of products divisible by either quantity (a case of wine bottles) or fungibility (liters of olive oil).
 
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction). -->
+### Use cases ideas include (but are not limited to!):
 
-## Scripts
+- **Olive oil:** buy 50 L, divide by liters
+- **Cheese:** buy a whole wheel, divide by weight
+- **Coffee:** volume-tier pricing
+- **Meat:** fundamentally indivisible bulk purchase divided among households
+- **Car Rentals / Boat charters / Group tours:** "let's take a road trip. we just need 5 people who won't back out!"
+- **Wholesale vintage clothing:** or anything that follows "buy the lot, split the content", ex. rare collectible card deck group buys
+- **Construction materials:** everyone wants different quantities
+- **Maker / Artisan materials:** chemicals, tools, supplies, 3D-printer filaments
+- **Festival tickets:** collective purchasing power without physically dividing a product
+- **Restaurant-supply goods:** ordinary consumers collectively accessing wholesale pricing
+- **Custom Electronics requiring MOQ:** custom synthesizers, effects pedals, mechanical keyboards, anything where no manufacturing run happens until Minimum Order Quantity is secured
+- **Wine:** fixed case divided into individual bottles
+- **Electronics components:** enormous quantity discounts
+- **Specialty imports:** collectively reach the quantity needed to make importing economical
 
-Package manager is pnpm (`packageManager` pinned in package.json — don't use npm/yarn).
+## The problem
 
-- `pnpm start` — start the Metro dev server (Expo Go / dev client)
-- `pnpm ios` / `pnpm android` / `pnpm web` — start and open on a specific platform
-- `pnpm lint` — runs `expo lint` (ESLint, flat config via `eslint-config-expo/flat`)
-- `pnpm reset-project` — moves `src/` and `scripts/` to `example/` (or deletes them) and creates a blank `src/app/` with `index.tsx`/`_layout.tsx`; run only when explicitly asked to strip the template
-- `pnpm test` — run the Vitest suite once (`vitest run`)
-- `pnpm test:watch` — run Vitest in watch mode
+Today, this coordination happens in group chats. Group chats fail this job in specific ways:
 
-Integration tests (`tests/`) hit a local Supabase instance directly — run `supabase start` first, and fill in `.env.test.local` (see `.env.example`) with the local API URL/anon key from `supabase status`. Tests are type-checked separately from the app via `tsconfig.test.json` (Node-scoped, not the Expo/RN-scoped root `tsconfig.json`) — see `pnpm exec tsc -p tsconfig.test.json --noEmit`.
+- **No urgency.** Nothing forces a decision; conversations drift.
+- **No accountability.** It's easy to say "I'm in" and just as easy to quietly not follow through, with no record either way.
+- **Distractions are legion.** The commitment thread is buried between everything else the group talks about, and the actual product offer is equally difficult to reference.
+- **Manual tracking is error-prone.** Someone — usually the admin — is manually tallying who's in, for how much, in their head or in a spreadsheet, off to the side of the chat.
+- **No enforcement of caps or thresholds.** Nothing stops a fixed-size bundle from being oversold, or tells the group whether a required minimum number of buyers was actually reached.
+- **No visibility into status.** Members can't easily tell whether an order is still open, how close it is to resolving, or whether their own stake is even confirmed.
 
-## Architecture
+This platform replaces the group chat as the _mechanism of commitment_ — not the group's conversation itself, just the part where "who's in for what" needs to be a structured, time-boxed, and trustworthy record instead of a scroll-back exercise.
 
-### Backend
+## Why this way
 
-**Triggers**
-| Trigger | Table / timing | Enforces |
-|---|---|---|
-| `trg_order_status_transition` | `orders`, `BEFORE UPDATE OF status` | `status` only moves `open` → `closed` → `executed`, never skips or reverses. |
-| `trg_init_order_item_unit_price` | `order_items`, `BEFORE INSERT` | Derives `unit_price` at creation from the product's pricing config, overwriting anything the caller supplied (the column carries `DEFAULT 0` so callers can omit it). `tiered` → the `qty_floor = 0` baseline tier, the same value `trg_sync_tiered_unit_price` derives at `quantity = 0`, so creation and maintenance agree by construction. `threshold_bundle` → `bundle_price / threshold_qty`, integer division and so deliberately lossy (a per-unit approximation; apportionment restates stakes to sum to exactly `bundle_price` when the order closes). Missing pricing config raises. `BEFORE` rather than `AFTER` so it assigns `NEW.unit_price` in place — no `UPDATE`, so unlike the `order_items` triggers below it starts no cascade and cannot recurse. |
-| `trg_check_stake_capacity` | `order_item_stakes`, `BEFORE INSERT OR UPDATE` | A stake can't push `order_items.quantity` past its ceiling — `threshold_qty` (via `product_bundle_thresholds`) for `threshold_bundle` products, `max_quantity` for `tiered` products. Overflow is **rejected outright, never clamped**. Locks the parent `order_items` row (`SELECT ... FOR UPDATE`) before reading the current sum, so two concurrent stakes on the same item can't both read a pre-insert sum and together overflow the ceiling (a write-skew race otherwise possible under MVCC/READ COMMITTED). Excludes the caller's own prior stake from that sum by `user_id` rather than `stake_id`, so an `UPDATE OF stake_qty` on an existing stake is checked against just everyone else's committed quantity. |
-| `trg_check_stake_order_is_open` | `order_item_stakes`, `BEFORE INSERT OR UPDATE OF stake_qty, user_id, order_item_id OR DELETE` | Rejects any stake write once the parent order has left `open` (`order_item_stakes` → `order_items` → `orders`), except a `DELETE` executed as `service_role`, which is always allowed (admin/test cleanup only — clients never hold this role). This is what makes `trg_apportion_on_close` final. The `OF` list deliberately omits `stake_amount`: `apportion_bundle_stakes` writes that column *after* the order is already `closed` and would otherwise trip this guard — so a direct `stake_amount` write still slips through post-close, which is the hole the `stake_amount` policy `TODO` covers. Takes `FOR SHARE` on the `orders` row rather than reading it plain: under `READ COMMITTED` an uncommitted close is invisible, so without the lock an item could fill *after* `apportion_bundle_stakes` had already skipped it as unfilled — and since `orders.status` only moves forward, nothing would ever settle it. `SHARE` rather than `UPDATE` so concurrent stakes on one order still don't serialize against each other. Branches on `TG_OP` to read `OLD` on `DELETE`, where `NEW` is unassigned. |
-| `trg_sync_order_item_quantity` | `order_item_stakes`, `AFTER INSERT OR UPDATE OF stake_qty OR DELETE` | Keeps `order_items.quantity` equal to `SUM(order_item_stakes.stake_qty)` for its `order_item_id`. Runs after the `BEFORE` triggers above have already rejected any overflow, so this write-back can never violate `order_items`' own `quantity <= max_quantity` check. `stake_qty` is the only column that can invalidate the sum, since `order_item_id` is immutable (decided; enforcement deferred to issue #3). Scoping to that one column also stops `trg_sync_stake_amounts_on_unit_price`'s bulk `stake_amount` rewrite from re-entering it once per repriced row. |
-| `trg_sync_stake_amount_on_stake_qty` | `order_item_stakes`, `BEFORE INSERT OR UPDATE OF stake_qty` | Derives `stake_amount` as `stake_qty × the item's current unit_price`, overwriting anything the caller supplied (the column carries `DEFAULT 0` so callers can omit it). One row, no cross-row dependency — bundle remainder cents are settled separately by `trg_apportion_on_close`, so a bundle that fills and then un-fills during the open window can never strand them. `BEFORE` rather than `AFTER` so it assigns `NEW.stake_amount` in place: no self-`UPDATE`, so it cannot recurse, and it does not depend on firing after `trg_sync_order_item_quantity`. A `tiered` insert that crosses a tier boundary reads the pre-crossing `unit_price` here and is corrected moments later by `trg_sync_stake_amounts_on_unit_price`'s bulk rewrite. |
-| `trg_sync_tiered_unit_price` | `order_items`, `AFTER UPDATE OF quantity` | For `tiered` items, looks up the `product_price_tiers` row with the highest `qty_floor <= quantity` and writes it to `unit_price` if it differs. Hangs off `order_items.quantity` (not `order_item_stakes` directly) so it uniformly covers every path that can move quantity — stake INSERT, UPDATE, and DELETE — since all three funnel through `trg_sync_order_item_quantity`'s `UPDATE order_items SET quantity = ...`. If no tier covers the new quantity (including `quantity = 0` on a product with no `qty_floor = 0` row), the write is **rejected outright** via exception, same as `trg_check_stake_capacity`'s overflow rejection. |
-| `trg_sync_stake_amounts_on_unit_price` | `order_items`, `AFTER UPDATE OF unit_price` | Fired by `trg_sync_tiered_unit_price` whenever a tiered item's `unit_price` actually changes. Bulk-rewrites every stake on that item to `stake_qty × new unit_price`, so the ledger always reflects current tier pricing rather than the price at each stake's own creation time. Guarded to `tiered` items only, so it can never touch `threshold_bundle` apportionment. |
-| `trg_apportion_on_close` | `orders`, `AFTER UPDATE OF status` | On `open` → `closed` only, calls `apportion_bundle_stakes(order_id)`: for every `threshold_bundle` item on that order whose `quantity` has reached `threshold_qty`, rewrites each stake to `floor(bundle_price × stake_qty / threshold_qty)` and hands the leftover cents one apiece to the **largest** fractional remainders (standard Hamilton apportionment), ties by ascending `stake_id`, so the item's stakes sum to exactly `bundle_price`. Unfilled items are skipped — nothing resolved, nothing to settle. Guarded to that one transition so the later `closed` → `executed` move cannot re-run it. Defined in the stakes migration, not the orders one, because the function it calls reads `order_item_stakes`. |
+Group chats already give people a place to talk about a bulk order — what they don't give them is a forcing function. The core bet is that swapping the _commitment_ step (not the conversation) out of chat and into a structured, time-boxed, enforced record is enough to fix the urgency/accountability/visibility problems. The platform's job is coordination, not commerce: it is not, and does not intend to become, a retailer that sells, stocks, ships, or fulfills anything itself.
 
-**Views**
-| View | Derives |
-|---|---|
-| `order_item_resolution` | Per-`order_item_id` `resolution_status` (`open` / `succeeded` / `maxed_out`), not stored. A `threshold_bundle` item succeeds the instant `quantity >= threshold_qty`; a `tiered` item with `max_quantity` set resolves to `maxed_out` the instant `quantity` hits it — both independent of the parent order's status. Everything else — an unfilled `threshold_bundle`, or a `tiered` item with no `max_quantity` set or below it — stays `open`, regardless of `orders.status`. |
+## Success looks like
 
+**Groups of buyers stop reverting to group chats.** The signal that matters is retention and habit: once a group tries running an order here, they keep coming back to it instead of falling back to a chat thread for the next one.
 
-## ERD (mermaid, current state)
+## Domain Description - the solution
 
-```mermaid
+- **Syndicates** are member groups with exactly one **admin**. There's no public signup or self-serve syndicate creation: a syndicate and its **admin** are bootstrapped directly against the backend (by whoever operates the platform), and from there the **admin** invites members by email. (See _Related technical resources_ below — this follows an established invite-only auth pattern, not an open registration flow.)
+- Each **syndicate** has **products** which are either procured off-app by the **admin** and thereafter defined by them in-app, or otherwise integrated into the app across all or select **syndicates** via real-world partnership agreements.
+- Two pricing models, decided per item:
+  - **Minimum quantity bundles or packs**, which require a minimum order quantity to unlock a fixed pack price. Ex. 6 tickets for $50 ($10 individually sold)
+  - **Tiered by sliding scale**, where the price per unit slides based on cumulative quantity ordered. Ex. 1 unit for $10, 5 units for $40 ($8 unit price), 10 units for $60 ($6 unit price) etc.
+- The **admin** opens an **order window**: a time-boxed collection of one or more **products**, with a **deadline**.
+- **Members** are notified when a new **order window** opens — push notification on mobile, email otherwise — so the commitment moment is a distinct, surfaced and scheduleable event.
+- Members commit a **stake** on each **product** of interest: their share (and associated cost) of a given item.
+  - in the case of **Minimum quantity bundles**, a member's **stake** may take 1 or more units in the bundle, and will know their cost by the floor of `bundlePrice / unitsInBundle * unitsClaimedByMember`. Fractional currency remainders abound in such cases, where someone needs to pay an extra cent or two... but don't worry - that's all equitably handled by the app!
+  - in the case of **Tiered by sliding scale** products, a member's **stake** can claim as many units as they like, and they will know their cost by `unitsClaimedByMember * unitPriceAtCurrentTier`. They can breathe easy knowing that as _other_ members place their own **stakes**, _everybody's_ unit price can _only decrease_. That means savings!
+- An **order** closes automatically when its **deadline** elapses.
+<!---- Consider either grace period or admin-only post-close adjustments?  to rally efforts towards satisfying min qty bundles  -->
+- Once closed, the admin has a finished order: a clear record of who committed to what, for how much. The admin can mark it **executed** once the actual purchase has been made
 
-erDiagram
-  USERS ||--o{ SYNDICATE_MEMBERS : belongs_to
-  SYNDICATES ||--o{ SYNDICATE_MEMBERS : has
-  USERS ||--o{ SYNDICATES : administers
-  SYNDICATES ||--o{ ORDERS : places
-  PRODUCTS ||--o| PRODUCT_BUNDLE_THRESHOLDS : has
-  PRODUCTS ||--o{ PRODUCT_PRICE_TIERS : has
-  ORDERS ||--o{ ORDER_ITEMS : contains
-  PRODUCTS ||--o{ ORDER_ITEMS : ordered_as
-  ORDER_ITEMS ||--o{ ORDER_ITEM_STAKES : split_into
-  USERS ||--o{ ORDER_ITEM_STAKES : stakes
+<!---
+### PoC scope boundaries
 
-  USERS {
-    uuid id PK
-    string email
-  }
-  SYNDICATES {
-    int syndicate_id PK
-    string name
-    uuid admin_user_id FK
-  }
-  SYNDICATE_MEMBERS {
-    int syndicate_id FK
-    uuid user_id FK
-    timestamp joined_at
-  }
-  PRODUCTS {
-    int product_id PK
-    string name
-    product_pricing_type pricing_type
-  }
-  PRODUCT_BUNDLE_THRESHOLDS {
-    int product_id FK
-    int threshold_qty
-    int bundle_price
-  }
-  PRODUCT_PRICE_TIERS {
-    int product_id FK
-    int qty_floor
-    int unit_price
-  }
-  ORDERS {
-    int order_id PK
-    int syndicate_id FK
-    order_status status
-    timestamp opened_at
-    timestamp deadline_at
-    timestamp closed_at
-    timestamp executed_at
-  }
-  ORDER_ITEMS {
-    int order_item_id PK
-    int order_id FK
-    int product_id FK
-    int quantity
-    int unit_price
-    int max_quantity
-  }
-  ORDER_ITEM_STAKES {
-    int stake_id PK
-    int order_item_id FK
-    uuid user_id FK
-    int stake_qty
-    int stake_amount
-  }
-```
+- **Not a retailer.** It never sells, stocks, ships, or fulfills the products being pooled for.
+- **No payment processing yet.** No money moves through the app; stakes are ledger entries members settle externally. Planned to change — see Roadmap.
+- **No cross-order inventory tracking.** Supply caps apply per order-item instance, not as a running total across a product's history — the platform deliberately does not become an inventory system.
+- **No open/public signup.** Syndicate membership is invite-only, issued by an admin — there is no self-serve account creation path.
+- **No minimum order quantity on tiered products.** A tiered product is orderable at any quantity — its price ladder always starts at zero, so the first unit already has a price. Vendor minimums ("50 units or no deal") aren't modelled: an item that never reaches a viable size simply closes at whatever quantity it reached. A threshold bundle's `threshold_qty` is a *pack size*, not a minimum, and doesn't cover this case.
 
-### Frontend
+### Platforms
 
-- The `expo reset-project` template strip has been run: `src/` currently holds only the blank scaffold (`src/app/_layout.tsx` with a bare `Stack`, `src/app/index.tsx` with a placeholder screen). The tabs/theming/platform-file structure previously documented here no longer exists — rebuild this section once the app is scaffolded back out.
-- **Routing**: Expo Router (file-based). Routes live in `src/app/`, not the conventional root-level `app/` — this is set via the `expo-router` plugin/main entry, so don't expect Expo's default docs paths to match without checking `src/app/`.
-- Import alias `@/*` → `src/*` and `@/assets/*` → `assets/*` (see `tsconfig.json`). Use these instead of relative `../../` paths.
+Built with Expo / React Native, targeting Android, iOS, and web. **Web (as a PWA) is the launch priority** — it's the fastest path to something usable — with native mobile following.
 
-### Autogen code
+### Business model
 
-These are procedurally generated files. Never edit them.
+Out of scope for the PoC. This is currently a free/internal tool for a closed set of syndicates, not a commercial product with a pricing model. May be revisited once payment handling (below) exists.
 
-- src/lib/database.types.ts
+### Upcoming technical decisions
 
-### Libraries
+Flagged here because they shape the product experience even though the decision itself is technical and not yet made.
 
-- date-fns: preferred as more readable and ergonomic than native Javascript Date objects
+**Item data flexibility.** The admin-facing item definition needs to feel flexible enough to cover different kinds of things a syndicate might pool toward — roughly the way a platform like Shopify lets very different sellers describe very different products under one general "product" concept. Two directions are on the table; the decision is deferred.
+
+|                    | **Option 1 — Custom fields per item**                                                                                                                                                                                                                                                                                         | **Option 2 — Fixed shape, flexible content**                                                                                                                         |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Description**    | Admins can add arbitrary fields to an item definition (e.g. size, flavor, variant, notes) — the item's _shape_ itself is configurable per item.                                                                                                                                                                               | Every item has the same structured fields (name, description, image, pricing config). Flexibility comes from what admins put _in_ those fields, not from new fields. |
+| **Pros**           | Maximally flexible — genuinely fits arbitrary use cases without the schema anticipating them. Feels closest to the Shopify comparison.                                                                                                                                                                                        | Simple, predictable data model. Easy to build list/search/filter UI against a known shape. No schema-migration-shaped problems as usage grows.                       |
+| **Cons**           | Harder to build consistent UI on top of (list views, filtering, sorting all get harder against an open-ended shape). More validation/schema complexity on the backend.                                                                                                                                                       | Less flexible for edge-case use cases; admins describe unusual items by overloading `description`/`notes` rather than structured fields.                             |
+| **Best fit if...** | Use cases turn out to be genuinely heterogeneous and the "one general item concept" bet needs to hold for a long tail of syndicate types.                                                                                                                                                                                     | Use cases converge on a fairly small number of shapes, and predictable UI/tooling matters more than open-endedness.                                                  |
+
+**Decision: not yet made.**
+
+### Open questions (PoC)
+
+- **Stake edits/withdrawals** — not yet implemented at any layer. A member should presumably be able to set or withdraw their own stake on an open order without staff intervention, subject to the same capacity/membership checks as a fresh stake, but neither a DB-layer mechanism nor a frontend exists yet. Also open: what a member should see/be told when the item they're staked on has already resolved (succeeded or maxed out) while the order stays open.
+- _(Additional non-goals, pending — see stub above.)_
+
+## Roadmap — next version
+
+Features planned beyond the PoC. This list will grow.
+
+### 1. Payment handling (escrow)
+
+Today, a stake is a pure ledger figure — a promise, settled entirely off-platform. A future version aims to back that promise with real funds: syndicate members stake actual money into an escrow account, which the admin then has available to draw on when executing the order. It is an item of interest to discover whether this may be a particularly well-suited use case for web3 technologies such as self-executing ("smart") contracts.
+
+-->
+
+## Related technical resources
+
+- [Technical documentation: backend] — the technical schema/spec companion to this document: Postgres/Supabase schema, triggers, and the open technical questions behind the product behavior described here.
+- **Invite-Only Auth Blueprint** (artifact, drafted 2026-08-20, from a separate reference project `supabase-local-sales-dash`) — a reusable pattern for exactly the admin-bootstrapped, invite-only membership model described above: a role-bearing profile table mirrored from `auth.users` via trigger, a `SECURITY DEFINER` role-check function, and a single Edge Function gate around `auth.admin.inviteUserByEmail` that is the only code path allowed to create an account. This is the intended shape for how syndicate invites get implemented, adapted from `rep`/`team_lead` to this platform's `member`/`admin` roles.
