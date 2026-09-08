@@ -88,11 +88,9 @@ Package manager is pnpm (`packageManager` pinned in package.json — don't use n
 - `pnpm test` — run the Vitest suite once (`vitest run`)
 - `pnpm test:watch` — run Vitest in watch mode
 
-Integration tests (`tests/`) hit a local Supabase instance directly — run `supabase start` first, and fill in `.env.test.local` (see `.env.example`) with the local API URL/anon key from `supabase status`. Tests are type-checked separately from the app via `tsconfig.test.json` (Node-scoped, not the Expo/RN-scoped root `tsconfig.json`) — see `pnpm exec tsc -p tsconfig.test.json --noEmit`.
 
 ## Architecture
 
-- The `expo reset-project` template strip has been run: `src/` currently holds only the blank scaffold (`src/app/_layout.tsx` with a bare `Stack`, `src/app/index.tsx` with a placeholder screen). The tabs/theming/platform-file structure previously documented here no longer exists — rebuild this section once the app is scaffolded back out.
 - **Routing**: Expo Router (file-based). Routes live in `src/app/`, not the conventional root-level `app/` — this is set via the `expo-router` plugin/main entry, so don't expect Expo's default docs paths to match without checking `src/app/`.
 - Import alias `@/*` → `src/*` and `@/assets/*` → `assets/*` (see `tsconfig.json`). Use these instead of relative `../../` paths.
 - @expo/ui and expo-glass-effect: both bind native SwiftUI/Jetpack Compose components and don't render on react-native-web. Since this demo has to run identically on iOS, Android, and web (three users, three devices, per the Goal above), the shared component inventory is built on portable View/Text/Pressable instead. Revisit these later, opt-in, for isolated native chrome behind Platform.OS !== 'web' with a portable fallback.

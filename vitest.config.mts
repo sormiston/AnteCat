@@ -2,7 +2,7 @@ import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vitest/config";
 
 try {
-  process.loadEnvFile(".env.test.local");
+  process.loadEnvFile(".env.development");
 } catch {
   // Optional locally-created file. If it's missing, integration tests will
   // fail clearly at the createClient() call instead of here.

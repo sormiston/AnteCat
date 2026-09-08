@@ -30,8 +30,9 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
+# local env files. Runtime files start with `.env`; their committed templates
+# are `.example.env*`, which this deliberately does not match.
+.env*
 
 # typescript
 *.tsbuildinfo

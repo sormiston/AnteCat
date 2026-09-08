@@ -9,8 +9,8 @@ import { addDays, formatISO } from "date-fns";
 // Postgres with RLS bypassed.
 export function createServiceRoleClient() {
   return createClient<Database>(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    process.env.VITEST_SUPABASE_URL!,
+    process.env.VITEST_SUPABASE_SERVICE_ROLE_KEY!,
   );
 }
 
