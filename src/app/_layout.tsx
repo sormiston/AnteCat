@@ -30,7 +30,7 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <View className="flex-1 web:mx-auto web:w-full web:max-w-[1200px]">
+        <View className="flex-1 bg-ground web:mx-auto web:w-full web:max-w-[1200px]">
           <SplashGate />
         </View>
       </AuthProvider>

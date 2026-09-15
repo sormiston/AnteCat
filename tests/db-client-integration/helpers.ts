@@ -1,3 +1,8 @@
+import {
+  bundleUnitIdealPrice as idealPriceOf,
+  tierPriceForQuantity,
+} from "@/domain/pricing";
+import type { PriceTier } from "@/domain/pricing";
 import type { Database } from "@/lib/database.types";
 import { createClient } from "@supabase/supabase-js";
 import { addDays, formatISO } from "date-fns";
@@ -51,7 +56,7 @@ export async function signInAs(email: string): Promise<TestClient> {
 }
 
 export type ThresholdConfig = { thresholdQty: number; bundlePrice: number };
-export type TierRow = { qtyFloor: number; unitPrice: number };
+export type TierRow = PriceTier;
 
 // Fixture identity/config below is read from supabase/seed.sql's actual
 // effect on the DB, once, at module load -- rather than copied as literals
@@ -161,25 +166,35 @@ export const {
   TIER_CONFIG,
 } = await loadFixtures(createServiceRoleClient());
 
-// trg_init_order_item_unit_price's threshold_bundle formula: bundle_price /
-// threshold_qty, integer floor.
-// "Ideal" price because this is floor of division, before apportionment of leftover cents.
+// Both price formulas live in src/domain/pricing.ts, which the app renders
+// from -- these wrappers only bind them to the seeded fixture config, so a
+// test asserting against a price is asserting against the same function the
+// screen shows.
+
+// trg_init_order_item_unit_price's threshold_bundle formula.
 export function bundleUnitIdealPrice(
   config: ThresholdConfig = THRESHOLD_CONFIG,
 ): number {
-  return Math.floor(config.bundlePrice / config.thresholdQty);
+  const price = idealPriceOf(config.bundlePrice, config.thresholdQty);
+  if (price === null) {
+    throw new Error(
+      `bundleUnitIdealPrice: threshold_qty must be positive, got ${config.thresholdQty}`,
+    );
+  }
+  return price;
 }
 
-// trg_sync_tiered_unit_price's lookup: the highest qty_floor <= qty.
+// trg_sync_tiered_unit_price's lookup. Throws where the trigger raises --
+// unlike the domain function, a test wants the failure loud.
 export function tierUnitPriceForQty(
   qty: number,
   tiers: TierRow[] = TIER_CONFIG,
 ): number {
-  const covering = [...tiers].reverse().find((t) => t.qtyFloor <= qty);
-  if (!covering) {
+  const price = tierPriceForQuantity(tiers, qty);
+  if (price === null) {
     throw new Error(`tierUnitPriceForQty: no covering tier for qty ${qty}`);
   }
-  return covering.unitPrice;
+  return price;
 }
 
 export const TIER_UNIT_PRICE_MAP = Object.fromEntries(

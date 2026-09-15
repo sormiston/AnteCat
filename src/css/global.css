@@ -1,3 +1,10 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Web only: the page behind the app's own max-width column. */
+@layer base {
+  body {
+    background-color: #e9e9e4;
+  }
+}
