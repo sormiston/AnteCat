@@ -1,11 +1,12 @@
 import { CapacityMeter } from "@/components/shared/CapacityMeter";
 import { Numeral } from "@/components/shared/Numeral";
 import { ResolutionBadge } from "@/components/shared/ResolutionBadge";
+import { standing } from "@/components/shared/standing";
 import { TierLadder } from "@/components/shared/TierLadder";
 import { formatEuroCents } from "@/domain/pricing";
 import { unitPriceOf, type OrderItemView } from "@/features/orders/view";
 import type { Database } from "@/lib/database.types";
-import { groupDigits, unitCount } from "@/lib/format";
+import { unitCount } from "@/lib/format";
 import { Link } from "expo-router";
 import { Pressable, Text, View } from "react-native";
 
@@ -105,47 +106,6 @@ export function OrderItemCard({
       </Pressable>
     </Link>
   );
-}
-
-/**
- * Where the item stands, then what follows from it. Two short sentences in
- * that order on every card, so the pair reads the same way whichever pricing
- * model produced it.
- *
- * Once the order is closed nothing is still to come, so the second sentence
- * switches from a prospect to an outcome rather than inviting a move nobody
- * can make.
- */
-function standing(item: OrderItemView, settled: boolean): string {
-  const taken =
-    item.ceiling === null
-      ? `${unitCount(item.quantity)} in.`
-      : `${groupDigits(item.quantity)} of ${groupDigits(item.ceiling)} taken.`;
-
-  if (item.resolution === "succeeded") {
-    return settled
-      ? `${taken} Settled to the cent. These are the final shares.`
-      : `${taken} It settles the moment the order closes.`;
-  }
-  if (item.resolution === "maxed_out") {
-    return `${taken} There is nothing left to take.`;
-  }
-
-  if (settled) {
-    return item.pricingType === "threshold_bundle"
-      ? `${taken} The pack never completed.`
-      : `${taken} That was the closing price.`;
-  }
-
-  if (item.pricingType === "threshold_bundle") {
-    if (item.remaining === null) return `${taken} This pack has no size set yet.`;
-    return `${taken} ${unitCount(item.remaining)} more completes it.`;
-  }
-  if (item.nextBreak) {
-    const { tier, unitsAway } = item.nextBreak;
-    return `${taken} ${unitsAway} more and everyone pays ${formatEuroCents(tier.unitPrice)} each.`;
-  }
-  return `${taken} This is the best price on offer.`;
 }
 
 function Figure({

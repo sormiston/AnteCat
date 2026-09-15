@@ -61,6 +61,12 @@ const FAILURES: Record<
       "This order belongs to a syndicate you're not a member of. Ask its admin to add you.",
     retryable: false,
   },
+  rejected: {
+    title: "That move didn't land",
+    message:
+      "The table moved before your change did \u2014 the pack filled, or the order closed. What's on screen now is where it stands.",
+    retryable: false,
+  },
   notFound: {
     title: "No such order",
     message: "This order has been removed, or the link points somewhere that never existed.",

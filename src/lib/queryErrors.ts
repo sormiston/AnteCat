@@ -7,8 +7,16 @@ import type { PostgrestError } from "@supabase/supabase-js";
  * list and detail URLs are typable and bookmarkable, so a stranger landing on
  * one needs to be told they can't see it -- not handed a retry button that
  * will never work (SPEC.md's Component Inventory).
+ *
+ * `rejected` is the write counterpart: a stake trigger refused the move on its
+ * merits (the pack filled, the order closed), which is an answer, not a fault.
  */
-export type FailureKind = "network" | "notAuthorized" | "notFound" | "unknown";
+export type FailureKind =
+  | "network"
+  | "notAuthorized"
+  | "notFound"
+  | "rejected"
+  | "unknown";
 
 export class DataError extends Error {
   readonly kind: FailureKind;
@@ -27,6 +35,10 @@ export function classifyPostgrestError(error: PostgrestError): FailureKind {
   if (error.code === "42501" || error.code === "PGRST301") return "notAuthorized";
   // .single() with no row.
   if (error.code === "PGRST116") return "notFound";
+  // P0001 is plpgsql's RAISE EXCEPTION, which is every stake guard in
+  // supabase/migrations refusing a write -- capacity overflow, or an order
+  // that has already closed.
+  if (error.code === "P0001") return "rejected";
   // supabase-js surfaces a failed fetch as an error with no Postgres code.
   if (!error.code && /fetch|network|timeout/i.test(error.message)) return "network";
   return "unknown";

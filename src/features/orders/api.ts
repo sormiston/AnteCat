@@ -102,3 +102,61 @@ export function useExecuteOrder(orderId: number) {
       queryClient.invalidateQueries({ queryKey: orderQueryKey(orderId) }),
   });
 }
+
+/**
+ * Take or change the viewer's share of an item.
+ *
+ * An upsert, because UNIQUE (order_item_id, user_id) makes a second commitment
+ * the same row -- and because check_stake_capacity excludes the caller's own
+ * prior stake by user_id, which is what lets a member raise their own share
+ * against a nearly-full pack without their existing units being counted twice.
+ *
+ * stake_amount is deliberately not sent. trg_sync_stake_amount_on_stake_qty
+ * overwrites whatever a client supplies, so sending a figure would only invite
+ * the belief that the client decides one.
+ */
+export function useCommitStake(orderId: number) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: {
+      orderItemId: number;
+      userId: string;
+      qty: number;
+    }) => {
+      const { error } = await supabase.from("order_item_stakes").upsert(
+        {
+          order_item_id: input.orderItemId,
+          user_id: input.userId,
+          stake_qty: input.qty,
+        },
+        { onConflict: "order_item_id,user_id" },
+      );
+      if (error) throw toDataError(error, "Taking your share");
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: orderQueryKey(orderId) }),
+  });
+}
+
+/**
+ * Leave an item entirely. A plain DELETE rather than a stake of zero, which
+ * CHECK (stake_qty > 0) rejects -- leaving is the absence of a row, so the
+ * ledger carries no record of a commitment nobody holds.
+ */
+export function useWithdrawStake(orderId: number) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: { orderItemId: number; userId: string }) => {
+      const { error } = await supabase
+        .from("order_item_stakes")
+        .delete()
+        .eq("order_item_id", input.orderItemId)
+        .eq("user_id", input.userId);
+      if (error) throw toDataError(error, "Withdrawing your share");
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: orderQueryKey(orderId) }),
+  });
+}

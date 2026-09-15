@@ -11,7 +11,8 @@ import {
   type TierBreak,
 } from "@/domain/pricing";
 import { resolveOrderItem, type OrderItemResolution } from "@/domain/resolution";
-import type { OrderItem } from "@/features/orders/api";
+import { stakeHeadroom } from "@/domain/stakes";
+import type { Order, OrderItem } from "@/features/orders/api";
 
 /**
  * One order item, flattened from its PostgREST shape and run through the
@@ -40,8 +41,24 @@ export type OrderItemView = {
   nextBreak: TierBreak | null;
   /** The viewer's own commitment on this item, null when they are not in. */
   viewerStake: { stakeId: number; qty: number; amountCents: number } | null;
+  /** The most the viewer may hold here, or null when nothing caps it. */
+  viewerHeadroom: number | null;
+  /**
+   * Every member's stake, largest first, so the detail screen shows who is in.
+   * Identity is not here: user_id points at auth.users, which PostgREST will
+   * not embed, so names come from features/syndicates' roster query.
+   */
+  stakes: StakeView[];
   /** How many members are in, the viewer included. */
   backerCount: number;
+};
+
+export type StakeView = {
+  stakeId: number;
+  userId: string;
+  qty: number;
+  amountCents: number;
+  isViewer: boolean;
 };
 
 export function toOrderItemView(
@@ -103,6 +120,18 @@ export function toOrderItemView(
           amountCents: own.stake_amount,
         }
       : null,
+    viewerHeadroom: stakeHeadroom(ceiling, item.quantity, own?.stake_qty ?? 0),
+    stakes: item.order_item_stakes
+      .map((stake) => ({
+        stakeId: stake.stake_id,
+        userId: stake.user_id,
+        qty: stake.stake_qty,
+        amountCents: stake.stake_amount,
+        isViewer: stake.user_id === viewerId,
+      }))
+      // Biggest share first, then by stake_id so the order never jitters
+      // between refetches -- PostgREST does not order embedded rows.
+      .sort((a, b) => b.qty - a.qty || a.stakeId - b.stakeId),
     backerCount: item.order_item_stakes.length,
   };
 }
@@ -131,4 +160,21 @@ export function toOrderItemViews(
   return items
     .map((item) => toOrderItemView(item, viewerId))
     .sort((a, b) => a.orderItemId - b.orderItemId);
+}
+
+/**
+ * One item out of the order already in cache, by the id in the route.
+ *
+ * Undefined means the order has no such item -- which on web is a typed or
+ * stale URL, not a failure to load, and the detail screen says so.
+ */
+export function findOrderItemView(
+  order: Order,
+  orderItemId: number,
+  viewerId: string | null,
+): OrderItemView | undefined {
+  const item = order.order_items.find(
+    (candidate) => candidate.order_item_id === orderItemId,
+  );
+  return item ? toOrderItemView(item, viewerId) : undefined;
 }

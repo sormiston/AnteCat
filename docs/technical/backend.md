@@ -106,6 +106,14 @@ only. Stake changes roll up into `order_items.quantity` through
 `trg_sync_order_item_quantity`, so a subscriber learns about them from the item
 row and never needs `order_item_stakes` in the publication.
 
+The `authenticated` `SELECT` grant on those two tables is load-bearing for
+Realtime, not only for PostgREST. A `postgres_changes` subscription is
+validated as the caller's role and recorded in `realtime.subscription` with
+that `claims_role`; a role with no grant gets a channel error rather than a
+quiet absence of events. With RLS off, every subscriber whose filter matches
+then receives the change — which is the same flat posture the grants above
+describe, and the same thing RLS would have to narrow later.
+
 ## ERD (mermaid, current state)
 
 ```mermaid
