@@ -122,7 +122,7 @@ Create a hook taking orderId: number. In a useEffect keyed on [orderId, queryCli
 
 src/app/(app)/order/_layout.tsx
 
-Call useOrderRealtime(orderId) once, render <Slot />. Do not mount the subscription in any screen.
+Call useOrderRealtime(orderId) once. Do not mount the subscription in any screen. The layout renders <Stack />, not <Slot /> -- a Slot collapses the list and detail into one screen of the parent stack, losing the push animation and back button.
 
 App-level wiring
 

@@ -8,7 +8,8 @@
     "scheme": "antecat",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.sormiston.AnteCat"
     },
     "android": {
       "adaptiveIcon": {
@@ -21,6 +22,7 @@
       "package": "com.sormiston.AnteCat"
     },
     "web": {
+      "bundler": "metro",
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
@@ -29,8 +31,8 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
-          "image": "./assets/images/splash-icon.png",
+          "backgroundColor": "#EF8120",
+          "image": "./assets/images/cat-chips-logo.png",
           "imageWidth": 76
         }
       ]

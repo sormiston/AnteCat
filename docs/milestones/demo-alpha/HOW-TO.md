@@ -56,19 +56,38 @@ Plain `http://` works on device because prebuild writes
 `usesCleartextTraffic="true"` into `android/app/src/debug/AndroidManifest.xml` —
 debug variant only.
 
-## Metro fallbacks
+## iOS over USB
 
-`run:android` starts Metro in LAN mode. If Wi-Fi is unusable:
+Dev build, not Expo Go. Local only — no `eas.json`. Needs Xcode installed and
+`ios.bundleIdentifier` set in `app.json` so Xcode has something to generate a
+provisioning profile for.
+
+Cable the phone to the Mac, tap **Trust** on the "Trust This Computer?" prompt,
+then:
 
 ```sh
-adb reverse tcp:8081 tcp:8081    # Metro only; Supabase needs its own forward
-adb reverse tcp:54321 tcp:54321  # + URL -> http://localhost:54321, rebundle
+pnpm exec expo run:ios --device   # builds, signs, installs, starts Metro
 ```
 
-Last resort (or phone on cellular): `expo start --dev-client --tunnel` plus
-`ngrok http 54321 --host-header=rewrite`. Both flags matter, and
-`src/lib/supabase.ts` already sends `ngrok-skip-browser-warning` to dodge the
-free-tier interstitial.
+Pick the physical device from the list, not a simulator. Real devices are
+sorted to the top and carry a 🔌 (USB) or 🌐 (network debugging) prefix with no
+OS-version suffix — a simulator entry always renders as `iPhone 15 Pro (18.0)`
+with no emoji. (Confirmed from `@expo/cli`'s own picker source,
+`promptDevice.js`, not just its docs.)
+
+The CLI signs automatically (`-allowProvisioningUpdates`) against whatever
+Apple ID is logged into Xcode — a free account works but its certificates
+expire after 7 days, so the app stops launching until you rebuild.
+
+**Developer Mode**, once per device, iOS 16+: install the build first, then
+tapping the app icon prompts an alert; follow it to Settings → Privacy &
+Security → Developer Mode → toggle on → Restart → unlock → Turn On → enter
+passcode. (Or do it ahead of the first build from Xcode: Window → Devices and
+Simulators shows "Developer Mode disabled" with the same toggle path.)
+
+First build is several minutes. After that, JS changes need only
+`pnpm exec expo start --dev-client`; rebuild only for native deps or
+`app.json` plugin/ios changes.
 
 ## Success
 

@@ -1,9 +1,7 @@
 import type { Database } from "@/lib/database.types";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient } from "@supabase/supabase-js";
-
-// Connectivity spike only: unauthenticated, no session handling. Ticket 3
-// replaces this file with the real singleton (auth + platform-conditional
-// storage adapter) rather than extending it.
+import { Platform } from "react-native";
 
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
@@ -11,20 +9,21 @@ const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 if (!url || !anonKey) {
   throw new Error(
     "Missing EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY. " +
-      "Copy .example.env.local to .env.local and fill it in, then restart Metro " +
-      "with --clear (env vars are inlined at bundle time).",
+      "Copy .example.env.development to .env.development and fill it in, then " +
+      "restart Metro with --clear (env vars are inlined at bundle time).",
   );
 }
 
 export const supabaseUrl = url;
-
 export const supabase = createClient<Database>(url, anonKey, {
   auth: {
-    // Nothing signs in during this spike, and no storage adapter is installed
-    // yet -- leaving these on makes supabase-js warn about missing storage.
-    persistSession: false,
-    autoRefreshToken: false,
-    detectSessionInUrl: false,
+    // Web has localStorage already; supabase-js picks it up when storage is
+    // left undefined, and falls back to in-memory during the static web
+    // prerender, where there is no window.
+    storage: Platform.OS === "web" ? undefined : AsyncStorage,
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true,
   },
   global: {
     headers: {

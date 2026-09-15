@@ -1,3 +1,9 @@
+# NativeWind's Babel transform rewrites JSX in app files to import
+# react-native-css-interop/jsx-runtime, so Metro has to resolve it from the
+# project root. pnpm's default strict layout keeps it nested under nativewind.
+publicHoistPattern:
+  - react-native-css-interop
+
 allowBuilds:
   unrs-resolver: true
 minimumReleaseAgeExclude:
