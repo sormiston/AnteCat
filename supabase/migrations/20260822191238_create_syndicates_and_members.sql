@@ -20,3 +20,15 @@ CREATE TABLE syndicate_members (
 CREATE INDEX idx_syndicates_admin_user_id ON syndicates (admin_user_id);
 CREATE INDEX idx_syndicate_members_user_id ON syndicate_members (user_id);
 
+
+-- Member identity for display: auth.users is not reachable through PostgREST,
+-- so a stake has nothing to label its owner with past a raw user_id.
+-- Deliberately NOT security_invoker -- the view runs as its owner, which is how
+-- authenticated reads these emails without a grant on auth.users itself.
+CREATE OR REPLACE VIEW syndicate_member_profiles AS
+SELECT
+  sm.syndicate_id,
+  sm.user_id,
+  u.email
+FROM syndicate_members sm
+JOIN auth.users u ON u.id = sm.user_id;

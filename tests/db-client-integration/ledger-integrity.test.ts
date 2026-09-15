@@ -225,9 +225,8 @@ describe("trg_check_stake_capacity", () => {
 
     // Grow member 2's stake to just under the remaining room -- the true
     // total (grownQty + otherQty) stays within the threshold. The capacity
-    // check must count member 2's own row at its old value here, not
-    // exclude it outright, or this would falsely pass regardless of the new
-    // value.
+    // check weighs the new value against everyone else's committed quantity,
+    // so member 2's own prior row must not be double-counted on top of it.
     const grownQty = THRESHOLD_CONFIG.thresholdQty - otherQty - 1;
     const { error } = await supabase
       .from("order_item_stakes")
@@ -264,10 +263,10 @@ describe("trg_check_stake_capacity", () => {
       stake_qty: otherQty,
     });
 
-    // True total is initialQty + otherQty. A check that excludes ALL of
-    // member 2's rows, rather than just the row being replaced, would see
-    // only member 3's otherQty and wrongly admit this second row, taking
-    // quantity past the threshold.
+    // A plain INSERT is not the commit path -- a second commitment is an
+    // upsert. Capacity passes here (it excludes member 2's own prior stake),
+    // so UNIQUE (order_item_id, user_id) is what rejects this, and quantity
+    // must be left untouched either way.
     const secondQty = THRESHOLD_CONFIG.thresholdQty - otherQty;
     const { error } = await supabase.from("order_item_stakes").insert({
       order_item_id: itemId,
@@ -450,6 +449,129 @@ describe("order_item_stakes UNIQUE (order_item_id, user_id)", () => {
       .from("order_item_stakes")
       .insert({ order_item_id: tieredItemId, user_id: MEMBER_2, stake_qty: 5 });
     expect(secondError).toBeNull();
+  });
+});
+
+// A commit is an upsert -- INSERT ... ON CONFLICT (order_item_id, user_id) DO
+// UPDATE (SPEC.md's Architectural Decisions). Its BEFORE INSERT pass runs
+// before the conflict is detected, so trg_check_stake_capacity has to exclude
+// the caller's own prior stake by user_id; excluding by stake_id sees a
+// not-yet-assigned id, counts that prior stake on top of the new value, and
+// rejects commits that fit.
+describe("order_item_stakes commit upsert", () => {
+  const supabase = createServiceRoleClient();
+  let orderId: number;
+
+  afterEach(async () => {
+    await cleanupOrder(supabase, orderId);
+  });
+
+  it("replaces a member's existing stake rather than adding a second row", async () => {
+    orderId = await createTestOrder(supabase);
+    const itemId = await createOrderItem(supabase, orderId, TIERED_PRODUCT_ID, {
+      maxQuantity: null,
+    });
+
+    await supabase
+      .from("order_item_stakes")
+      .insert({ order_item_id: itemId, user_id: MEMBER_2, stake_qty: 2 });
+
+    const { error } = await supabase
+      .from("order_item_stakes")
+      .upsert(
+        { order_item_id: itemId, user_id: MEMBER_2, stake_qty: 5 },
+        { onConflict: "order_item_id,user_id" },
+      );
+    expect(error).toBeNull();
+
+    const { data: stakes } = await supabase
+      .from("order_item_stakes")
+      .select("stake_qty")
+      .eq("order_item_id", itemId);
+    expect(stakes).toHaveLength(1);
+    expect(stakes?.[0].stake_qty).toBe(5);
+
+    const { data: item } = await supabase
+      .from("order_items")
+      .select("quantity")
+      .eq("order_item_id", itemId)
+      .single();
+    expect(item?.quantity).toBe(5);
+  });
+
+  it("weighs a threshold bundle upsert against everyone else's quantity, not the caller's own prior stake", async () => {
+    orderId = await createTestOrder(supabase);
+    const itemId = await createOrderItem(
+      supabase,
+      orderId,
+      THRESHOLD_PRODUCT_ID,
+    );
+
+    const otherQty = 1;
+    await supabase
+      .from("order_item_stakes")
+      .insert({ order_item_id: itemId, user_id: MEMBER_2, stake_qty: 2 });
+    await supabase.from("order_item_stakes").insert({
+      order_item_id: itemId,
+      user_id: MEMBER_3,
+      stake_qty: otherQty,
+    });
+
+    // Exactly fills the pack. Counting member 2's prior 2 on top of this
+    // would read as thresholdQty + 2 and reject a commit that fits.
+    const filledQty = THRESHOLD_CONFIG.thresholdQty - otherQty;
+    const { error } = await supabase
+      .from("order_item_stakes")
+      .upsert(
+        { order_item_id: itemId, user_id: MEMBER_2, stake_qty: filledQty },
+        { onConflict: "order_item_id,user_id" },
+      );
+    expect(error).toBeNull();
+
+    const { data: item } = await supabase
+      .from("order_items")
+      .select("quantity")
+      .eq("order_item_id", itemId)
+      .single();
+    expect(item?.quantity).toBe(THRESHOLD_CONFIG.thresholdQty);
+  });
+
+  it("still rejects an upsert that overflows the threshold, leaving the prior stake intact", async () => {
+    orderId = await createTestOrder(supabase);
+    const itemId = await createOrderItem(
+      supabase,
+      orderId,
+      THRESHOLD_PRODUCT_ID,
+    );
+
+    const priorQty = 2;
+    const otherQty = 1;
+    await supabase.from("order_item_stakes").insert({
+      order_item_id: itemId,
+      user_id: MEMBER_2,
+      stake_qty: priorQty,
+    });
+    await supabase.from("order_item_stakes").insert({
+      order_item_id: itemId,
+      user_id: MEMBER_3,
+      stake_qty: otherQty,
+    });
+
+    const overflowQty = THRESHOLD_CONFIG.thresholdQty - otherQty + 1;
+    const { error } = await supabase
+      .from("order_item_stakes")
+      .upsert(
+        { order_item_id: itemId, user_id: MEMBER_2, stake_qty: overflowQty },
+        { onConflict: "order_item_id,user_id" },
+      );
+    expect(error).not.toBeNull();
+
+    const { data: item } = await supabase
+      .from("order_items")
+      .select("quantity")
+      .eq("order_item_id", itemId)
+      .single();
+    expect(item?.quantity).toBe(priorQty + otherQty);
   });
 });
 

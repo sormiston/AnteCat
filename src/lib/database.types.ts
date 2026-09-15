@@ -259,6 +259,22 @@ export type Database = {
         }
         Relationships: []
       }
+      syndicate_member_profiles: {
+        Row: {
+          email: string | null
+          syndicate_id: number | null
+          user_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "syndicate_members_syndicate_id_fkey"
+            columns: ["syndicate_id"]
+            isOneToOne: false
+            referencedRelation: "syndicates"
+            referencedColumns: ["syndicate_id"]
+          },
+        ]
+      }
     }
     Functions: {
       apportion_bundle_stakes: {

@@ -41,10 +41,14 @@ BEGIN
   WHERE oi.order_item_id = NEW.order_item_id
   FOR UPDATE OF oi;
 
+  -- Excluded by user_id, not stake_id: a commit is an upsert, and its BEFORE
+  -- INSERT pass runs before the conflict is detected, so NEW.stake_id is not
+  -- yet the existing row's. UNIQUE (order_item_id, user_id) makes this at most
+  -- one row on either path.
   SELECT COALESCE(SUM(stake_qty), 0) INTO v_current_qty
   FROM order_item_stakes
   WHERE order_item_id = NEW.order_item_id
-    AND (TG_OP = 'INSERT' OR stake_id != NEW.stake_id);  -- SO: discount existing row from sum, to not double count
+    AND user_id != NEW.user_id;  -- SO: discount existing row from sum, to not double count
 
   IF v_pricing_type = 'threshold_bundle' AND v_current_qty + NEW.stake_qty > v_threshold THEN
     RAISE EXCEPTION 'stake would exceed bundle threshold of % (already at %)', v_threshold, v_current_qty;

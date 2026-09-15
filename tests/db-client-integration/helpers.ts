@@ -16,6 +16,40 @@ export function createServiceRoleClient() {
 
 export type TestClient = ReturnType<typeof createServiceRoleClient>;
 
+// anon key, i.e. the key the app itself ships with: a client created here holds
+// the anon role until it signs in, and the authenticated role afterwards. This
+// is what makes these tests cover grants at all -- the service-role client
+// above bypasses them.
+export function createAnonClient() {
+  const url = process.env.VITEST_SUPABASE_URL;
+  const anonKey = process.env.VITEST_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) {
+    throw new Error(
+      "createAnonClient: VITEST_SUPABASE_URL and VITEST_SUPABASE_ANON_KEY must be set in .env.development",
+    );
+  }
+  // No session persistence: each test client signs in on its own, and a shared
+  // storage would let one test's identity leak into the next.
+  return createClient<Database>(url, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+// All seeded users share this password (supabase/seed.sql).
+export const SEED_PASSWORD = "password123";
+
+export async function signInAs(email: string): Promise<TestClient> {
+  const client = createAnonClient();
+  const { error } = await client.auth.signInWithPassword({
+    email,
+    password: SEED_PASSWORD,
+  });
+  if (error) {
+    throw new Error(`signInAs(${email}) failed: ${error.message}`);
+  }
+  return client;
+}
+
 export type ThresholdConfig = { thresholdQty: number; bundlePrice: number };
 export type TierRow = { qtyFloor: number; unitPrice: number };
 
