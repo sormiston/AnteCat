@@ -86,7 +86,7 @@ function Action({
   }, [armed]);
 
   return (
-    <View className="gap-3 border-t border-rule px-4 pb-10 pt-5">
+    <View className="gap-3 border-t border-rule px-4 pb-10 pt-5" testID="Action">
       <Text className="text-[13px] leading-[19px] text-dusk">{prompt}</Text>
 
       {armed ? (
@@ -134,7 +134,7 @@ function Action({
 
 function Note({ children }: { children: React.ReactNode }) {
   return (
-    <View className="border-t border-rule px-4 pb-10 pt-5">
+    <View className="border-t border-rule px-4 pb-10 pt-5" testID="Note">
       <Text className="text-[13px] leading-[19px] text-dusk">{children}</Text>
     </View>
   );

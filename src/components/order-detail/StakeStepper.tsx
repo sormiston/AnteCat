@@ -81,7 +81,7 @@ export function StakeStepper({
     item.quantity !== item.bundle.thresholdQty;
 
   return (
-    <View className="gap-4">
+    <View className="gap-4" testID="StakeStepper">
       <View className="flex-row items-center justify-between gap-4">
         <View className="flex-row items-center gap-4">
           <StepButton
@@ -187,6 +187,7 @@ function StepButton({
       className={`h-[46px] w-[46px] items-center justify-center rounded-[4px] border ${
         enabled ? "border-ink bg-white active:bg-ground" : "border-rule bg-transparent"
       }`}
+      testID="StepButton"
     >
       <Text
         className={`text-[22px] leading-[26px] ${
@@ -241,6 +242,7 @@ function CommitButton({
       className={`items-center rounded-[4px] px-4 py-[13px] ${
         enabled ? "bg-ante active:bg-ante-deep" : "bg-rule"
       }`}
+      testID="CommitButton"
     >
       <Text
         className={`text-[15px] font-semibold ${
@@ -267,7 +269,10 @@ function WriteFailure({ error }: { error: unknown }) {
         : "Something went wrong. Your share is unchanged.";
 
   return (
-    <View className="rounded-[3px] border border-rule bg-ground px-3 py-[10px]">
+    <View
+      className="rounded-[3px] border border-rule bg-ground px-3 py-[10px]"
+      testID="WriteFailure"
+    >
       <Text className="text-[13px] leading-[18px] text-ink-soft">{message}</Text>
     </View>
   );

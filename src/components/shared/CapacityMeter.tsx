@@ -58,7 +58,7 @@ function Chips({
   const others = Math.min(Math.max(taken - mine, 0), total - mine);
 
   return (
-    <View className="flex-row flex-wrap items-center gap-[6px]">
+    <View className="flex-row flex-wrap items-center gap-[6px]" testID="Chips">
       {Array.from({ length: total }, (_, index) => {
         // Yours first, so your units sit against the card's own orange edge.
         const state =
@@ -94,7 +94,10 @@ function Bar({
   const mine = Math.min(yours, taken);
 
   return (
-    <View className="h-[7px] flex-row overflow-hidden rounded-[1px] bg-rule">
+    <View
+      className="h-[7px] flex-row overflow-hidden rounded-[1px] bg-rule"
+      testID="Bar"
+    >
       <View className="h-full bg-ante" style={{ width: percent(mine) }} />
       <View className="h-full bg-ink" style={{ width: percent(taken - mine) }} />
     </View>

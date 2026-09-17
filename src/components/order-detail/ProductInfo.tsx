@@ -27,7 +27,7 @@ export function ProductInfo({
   const unitPrice = unitPriceOf(item);
 
   return (
-    <View className="gap-4">
+    <View className="gap-4" testID="ProductInfo">
       {item.description ? (
         <Text className="max-w-[560px] text-[14px] leading-[21px] text-ink-soft">
           {item.description}
@@ -84,7 +84,10 @@ function PriceRow({
   muted?: boolean;
 }) {
   return (
-    <View className="flex-row items-baseline justify-between gap-3">
+    <View
+      className="flex-row items-baseline justify-between gap-3"
+      testID="PriceRow"
+    >
       <Text className="text-[13px] text-dusk">{label}</Text>
       <Numeral
         className={

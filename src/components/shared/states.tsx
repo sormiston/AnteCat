@@ -11,18 +11,27 @@ import { Pressable, Text, View } from "react-native";
  */
 
 function Frame({ children }: { children: React.ReactNode }) {
-  return <View className="items-start gap-2 px-5 py-14">{children}</View>;
+  return (
+    <View className="items-start gap-2 px-5 py-14" testID="Frame">
+      {children}
+    </View>
+  );
 }
 
 function Title({ children }: { children: React.ReactNode }) {
   return (
-    <Text className="text-[19px] font-semibold text-ink">{children}</Text>
+    <Text className="text-[19px] font-semibold text-ink" testID="Title">
+      {children}
+    </Text>
   );
 }
 
 function Body({ children }: { children: React.ReactNode }) {
   return (
-    <Text className="max-w-[420px] text-[14px] leading-[21px] text-ink-soft">
+    <Text
+      className="max-w-[420px] text-[14px] leading-[21px] text-ink-soft"
+      testID="Body"
+    >
       {children}
     </Text>
   );
@@ -108,7 +117,7 @@ export function ErrorState({
 /** Two card-shaped placeholders. Deliberately still -- a shimmer would be the only unprompted motion in the app. */
 export function LoadingSkeleton() {
   return (
-    <View className="gap-3 px-4 py-4">
+    <View className="gap-3 px-4 py-4" testID="LoadingSkeleton">
       {[0, 1].map((key) => (
         <View
           key={key}

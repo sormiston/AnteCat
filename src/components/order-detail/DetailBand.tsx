@@ -27,7 +27,7 @@ export function DetailBand({
   const insets = useSafeAreaInsets();
 
   return (
-    <View className="bg-table">
+    <View className="bg-table" testID="DetailBand">
       <View
         className="mx-auto w-full max-w-[640px] gap-4 px-5 pb-5"
         style={{ paddingTop: insets.top + 14 }}
@@ -69,6 +69,7 @@ function BackToOrder() {
         router.canGoBack() ? router.back() : router.replace("/order")
       }
       className="-ml-1 flex-row items-center gap-1 px-1 py-1"
+      testID="BackToOrder"
     >
       <Text className="text-[17px] leading-[20px] text-ground/80">
         {"‹"}

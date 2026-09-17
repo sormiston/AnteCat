@@ -28,7 +28,7 @@ export function TieredPriceTable({
   if (tiers.length === 0) return null;
 
   return (
-    <View className="gap-[2px]">
+    <View className="gap-[2px]" testID="TieredPriceTable">
       {tiers.map((tier, index) => {
         const next = tiers[index + 1];
         const live = tier.qtyFloor === activeFloor;

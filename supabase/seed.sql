@@ -71,7 +71,7 @@ SELECT setval('orders_order_id_seq', (SELECT MAX(order_id) FROM orders));
 -- qty_floor = 0 tier for the tiered product).
 INSERT INTO order_items (order_item_id, order_id, product_id, max_quantity) VALUES
   (1, 1, 1, NULL),   -- Widget 6-Pack
-  (2, 1, 2, 2500);   -- Bulk Gizmos
+  (2, 1, 2, 32);   -- Bulk Gizmos
 
 SELECT setval('order_items_order_item_id_seq', (SELECT MAX(order_item_id) FROM order_items));
 

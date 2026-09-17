@@ -8,7 +8,6 @@
     ],
     "defaultMode": "auto"
   },
-  "plansDirectory": "./plans",
   "enabledPlugins": {
     "expo@claude-plugins-official": true
   }

@@ -21,7 +21,7 @@ export function TierLadder({
   if (tiers.length === 0) return null;
 
   return (
-    <View className="flex-row flex-wrap gap-[6px]">
+    <View className="flex-row flex-wrap gap-[6px]" testID="TierLadder">
       {tiers.map((tier, index) => {
         const next = tiers[index + 1];
         const state =

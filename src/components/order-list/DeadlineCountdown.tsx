@@ -42,7 +42,11 @@ export function DeadlineCountdown({ deadlineAt }: { deadlineAt: string }) {
   const tone = isUrgent(remaining.totalMs) ? "text-brass" : "text-white";
 
   return (
-    <View className="gap-1" accessibilityLabel={formatTimeRemaining(remaining)}>
+    <View
+      className="gap-1"
+      accessibilityLabel={formatTimeRemaining(remaining)}
+      testID="DeadlineCountdown"
+    >
       <View className="flex-row items-baseline gap-[6px]">
         {days ? (
           <Numeral className={`text-[21px] leading-[46px] ${tone}`}>
@@ -78,7 +82,7 @@ export function WindowRule({
   const urgent = isUrgent(timeRemaining(deadlineAt, now).totalMs);
 
   return (
-    <View className="h-[3px] flex-row bg-table-edge">
+    <View className="h-[3px] flex-row bg-table-edge" testID="WindowRule">
       <View
         className={urgent ? "h-full bg-brass" : "h-full bg-ground/50"}
         style={{ width: `${Math.round(elapsed * 100)}%` }}

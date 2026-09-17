@@ -25,7 +25,10 @@ export function StakeList({
 }) {
   if (item.stakes.length === 0) {
     return (
-      <Text className="text-[14px] leading-[21px] text-ink-soft">
+      <Text
+        className="text-[14px] leading-[21px] text-ink-soft"
+        testID="StakeList"
+      >
         Nobody has taken a share yet. Whoever goes first sets this one moving.
       </Text>
     );
@@ -34,7 +37,7 @@ export function StakeList({
   const total = item.stakes.reduce((sum, stake) => sum + stake.amountCents, 0);
 
   return (
-    <View className="gap-[2px]">
+    <View className="gap-[2px]" testID="StakeList">
       {item.stakes.map((stake) => (
         <View
           key={stake.stakeId}

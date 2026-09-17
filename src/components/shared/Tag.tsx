@@ -17,7 +17,10 @@ export function Tag({ label, tone = "dusk" }: { label: string; tone?: TagTone })
   const { box, label: labelClass } = TONES[tone];
 
   return (
-    <View className={`rounded-[2px] border px-2 py-[3px] ${box}`}>
+    <View
+      className={`rounded-[2px] border px-2 py-[3px] ${box}`}
+      testID="Tag"
+    >
       <Text className={`text-[11px] font-semibold tracking-wide ${labelClass}`}>
         {label}
       </Text>

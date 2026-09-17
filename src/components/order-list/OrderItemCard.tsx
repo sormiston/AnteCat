@@ -34,7 +34,7 @@ export function OrderItemCard({
   const isBundle = item.pricingType === "threshold_bundle";
 
   return (
-    <Link href={`/order/${item.orderItemId}`} asChild>
+    <Link href={`/order/${item.orderItemId}`} asChild testID="OrderItemCard">
       <Pressable
         accessibilityRole="link"
         accessibilityLabel={`${item.name}, ${item.quantity} units taken`}
@@ -120,7 +120,10 @@ function Figure({
   mine?: boolean;
 }) {
   return (
-    <View className="flex-row items-baseline justify-between gap-3">
+    <View
+      className="flex-row items-baseline justify-between gap-3"
+      testID="Figure"
+    >
       <Text className={`text-[13px] ${mine ? "text-ante-deep" : "text-dusk"}`}>
         {label}
       </Text>

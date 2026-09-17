@@ -21,6 +21,7 @@ export function Numeral({ style, ...props }: TextProps) {
     <Text
       {...props}
       style={[{ fontFamily: FIGURE_FACE, fontVariant: ["tabular-nums"] }, style]}
+      testID="Numeral"
     />
   );
 }
