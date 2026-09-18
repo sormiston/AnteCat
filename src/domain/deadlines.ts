@@ -67,25 +67,28 @@ export function windowElapsedFraction(
  * The countdown, split so the days can be set smaller than the clock rather
  * than sitting behind a full monospace space.
  *
- * Above a day, seconds are noise; under a day they are the whole point, so the
- * clock changes shape rather than padding a unit nobody is watching.
+ * The clock always runs to seconds, so the figure is visibly moving whatever
+ * the distance to the deadline -- a still number reads as a stale screen.
+ * Above a day the hours are padded, so the clock keeps one width as it counts
+ * down rather than shifting under the days beside it.
  */
 export function timeRemainingParts(remaining: TimeRemaining): {
   days: string | null;
   clock: string;
 } {
   const pad = (value: number) => value.toString().padStart(2, "0");
+  const seconds = pad(remaining.seconds);
 
   if (remaining.expired) return { days: null, clock: "0:00:00" };
   if (remaining.days > 0) {
     return {
       days: `${remaining.days}d`,
-      clock: `${pad(remaining.hours)}:${pad(remaining.minutes)}`,
+      clock: `${pad(remaining.hours)}:${pad(remaining.minutes)}:${seconds}`,
     };
   }
   return {
     days: null,
-    clock: `${remaining.hours}:${pad(remaining.minutes)}:${pad(remaining.seconds)}`,
+    clock: `${remaining.hours}:${pad(remaining.minutes)}:${seconds}`,
   };
 }
 

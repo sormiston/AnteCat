@@ -70,7 +70,10 @@ export default function OrderScreen() {
   return (
     <View className="flex-1 bg-ground">
       <Stack.Screen options={{ headerShown: false }} />
-      <Band order={viewerIsMember ? order.data : undefined} />
+      <Band
+        order={viewerIsMember ? order.data : undefined}
+        email={user?.email ?? null}
+      />
       {body()}
     </View>
   );
@@ -125,7 +128,13 @@ function OrderBoard({
  * it: the countdown belongs in the same field of colour as the title, and a
  * stock header above it would cut that field in two.
  */
-function Band({ order }: { order: Order | undefined }) {
+function Band({
+  order,
+  email,
+}: {
+  order: Order | undefined;
+  email: string | null;
+}) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -138,13 +147,25 @@ function Band({ order }: { order: Order | undefined }) {
           <Text className="flex-1 text-[15px] font-semibold text-ground">
             {order?.syndicates.name ?? "AnteCat"}
           </Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => supabase.auth.signOut()}
-            className="px-1 py-1"
-          >
-            <Text className="text-[13px] text-ground/70">Sign out</Text>
-          </Pressable>
+          <View className="flex-row items-center gap-3">
+            {email ? (
+              <Text
+                className="text-[13px] text-ground/70"
+                numberOfLines={1}
+              >
+                {email}
+              </Text>
+            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => supabase.auth.signOut()}
+              className="px-1 py-1"
+            >
+              <Text className="text-[13px] font-semibold text-ground">
+                Sign out
+              </Text>
+            </Pressable>
+          </View>
         </View>
 
         {order ? (

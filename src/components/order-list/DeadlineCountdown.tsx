@@ -33,13 +33,13 @@ function isUrgent(remainingMs: number): boolean {
 }
 
 export function DeadlineCountdown({ deadlineAt }: { deadlineAt: string }) {
-  // Ticks every second, which only shows inside the last day -- above that the
-  // string stops at minutes. The spare renders are the price of not running a
-  // second timer just for the changeover.
   const remaining = timeRemaining(deadlineAt, useNow(TICK_MS));
 
   const { days, clock } = timeRemainingParts(remaining);
   const tone = isUrgent(remaining.totalMs) ? "text-brass" : "text-white";
+  // A clock with a days part beside it is two characters longer, which at the
+  // hero size runs past the badge on a phone -- so that shape is set smaller.
+  const size = days ? "text-[32px]" : "text-[40px]";
 
   return (
     <View
@@ -53,7 +53,7 @@ export function DeadlineCountdown({ deadlineAt }: { deadlineAt: string }) {
             {days}
           </Numeral>
         ) : null}
-        <Numeral className={`text-[40px] leading-[46px] tracking-tight ${tone}`}>
+        <Numeral className={`${size} leading-[46px] tracking-tight ${tone}`}>
           {clock}
         </Numeral>
       </View>

@@ -74,13 +74,13 @@ describe("windowElapsedFraction", () => {
 });
 
 describe("formatTimeRemaining", () => {
-  it("drops seconds above a day, where they are noise", () => {
+  it("counts seconds above a day, with the hours padded", () => {
     expect(
       formatTimeRemaining(timeRemaining(at("2026-09-18T14:30:45.000Z"), NOW)),
-    ).toBe("3d 02:30");
+    ).toBe("3d 02:30:45");
   });
 
-  it("counts seconds inside the last day, where they are the point", () => {
+  it("drops the days part inside the last day", () => {
     expect(
       formatTimeRemaining(timeRemaining(at("2026-09-15T14:05:09.000Z"), NOW)),
     ).toBe("2:05:09");
@@ -95,10 +95,10 @@ describe("timeRemainingParts", () => {
   it("splits the days off, so they can be set apart from the clock", () => {
     expect(
       timeRemainingParts(timeRemaining(at("2026-09-18T14:30:45.000Z"), NOW)),
-    ).toEqual({ days: "3d", clock: "02:30" });
+    ).toEqual({ days: "3d", clock: "02:30:45" });
   });
 
-  it("has no days part inside the last day, and counts seconds instead", () => {
+  it("has no days part inside the last day", () => {
     expect(
       timeRemainingParts(timeRemaining(at("2026-09-15T14:05:09.000Z"), NOW)),
     ).toEqual({ days: null, clock: "2:05:09" });
