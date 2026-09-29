@@ -1,6 +1,6 @@
 # Three-device dev loop (Mac, Android phone, browser)
 
-Everything hangs off the Mac's LAN IP. `localhost` means the phone.
+Local supabase stack will run on my Macbook and be accessible by all devices sharing a network and acessing supabase via my Macbook's LAN IP.
 
 ```sh
 supabase start
@@ -58,10 +58,11 @@ debug variant only.
 
 ## iOS over USB
 
-Dev build, not Expo Go. Local only — no `eas.json`. Needs Xcode installed and
-`ios.bundleIdentifier` set in `app.json` so Xcode has something to generate a
-provisioning profile for.
+# Put phone in Developer Mode:
 
+iOS 16+: Settings → Privacy &
+Security → Developer Mode → toggle on → Restart → unlock → Turn On → enter
+passcode.  Restart.
 Cable the phone to the Mac, tap **Trust** on the "Trust This Computer?" prompt,
 then:
 
@@ -72,18 +73,11 @@ pnpm exec expo run:ios --device   # builds, signs, installs, starts Metro
 Pick the physical device from the list, not a simulator. Real devices are
 sorted to the top and carry a 🔌 (USB) or 🌐 (network debugging) prefix with no
 OS-version suffix — a simulator entry always renders as `iPhone 15 Pro (18.0)`
-with no emoji. (Confirmed from `@expo/cli`'s own picker source,
-`promptDevice.js`, not just its docs.)
+with no emoji.
 
 The CLI signs automatically (`-allowProvisioningUpdates`) against whatever
 Apple ID is logged into Xcode — a free account works but its certificates
 expire after 7 days, so the app stops launching until you rebuild.
-
-**Developer Mode**, once per device, iOS 16+: install the build first, then
-tapping the app icon prompts an alert; follow it to Settings → Privacy &
-Security → Developer Mode → toggle on → Restart → unlock → Turn On → enter
-passcode. (Or do it ahead of the first build from Xcode: Window → Devices and
-Simulators shows "Developer Mode disabled" with the same toggle path.)
 
 First build is several minutes. After that, JS changes need only
 `pnpm exec expo start --dev-client`; rebuild only for native deps or

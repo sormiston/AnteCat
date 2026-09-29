@@ -2,14 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-After any and all code changes, check whether new changes require updates or editds to documentation. 
-
-Documentation is:
-@docs/technical/backend.md
-@docs/technical/frontend.md
 
 Whenever creating or editing a TICKET file, consider it as 1 commit's worth of work towards the implementation of a plan defined in a SPEC file.  Ask to which SPEC file it belongs if it is not clearly linked via @ path linking.
 Keep in mind that @README.md is a public-facing document.  While it describes the vision of the app well, it is not necessarily a source of truth for technical implementation.
+
+When in Plan Mode, KEEP YOUR PLANS SHORT (250 words) unless a FULL PLAN is requested by user.
 
 ## Code style
 
@@ -72,7 +69,7 @@ Do not be overly verbose when writing comments in SQL migration files.
 
 Never modify comments signed "SO", these are by me.
 
-Currently, this project is developing against a LOCAL supabase stack with no linked remote.  When asked to write SQL migrations, check that this remains the case.  If it does remain the case, then do not prefer to write new migrations to implement schema changes, rather, edit the old ones.
+Currently, this project is developing against a LOCAL supabase stack with no linked remote.  When asked to write SQL migrations, check that this remains the case.  If it does remain the case, then do not prefer to write new migrations to implement schema changes, rather, edit the old ones.  If project has been linked to a remote, STOP work and alert the user before editing migration files.
 
 ## SPEC writing
 When editing specs in dialog with the user, it is not necessary to leave notes about what was removed when the user requests something removed.
