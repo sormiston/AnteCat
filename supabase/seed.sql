@@ -2,7 +2,7 @@
 -- one order sitting in a semi-finished, still-open state.
 
 INSERT INTO products (product_id, name, description, pricing_type) VALUES
-  (1, 'Widget 6-Pack', 'Bulk widgets sold in fixed 6-packs', 'threshold_bundle'),
+  (1, 'Widget 6-Pack', 'Bulk widgets sold in packs of 6', 'threshold_bundle'),
   (2, 'Bulk Gizmos', 'Gizmos priced per-unit on a sliding scale', 'tiered');
 
 INSERT INTO product_bundle_thresholds (product_id, threshold_qty, bundle_price) VALUES
@@ -62,7 +62,8 @@ SELECT setval('syndicates_syndicate_id_seq', (SELECT MAX(syndicate_id) FROM synd
 -- One order, still open, deadline a few days out, sitting in a semi-finished
 -- (pending) state on both items.
 INSERT INTO orders (order_id, syndicate_id, status, deadline_at) VALUES
-  (1, 1, 'open', now() + interval '4 days');
+  (1, 1, 'open', now() + interval '3 day');
+  -- (1, 1, 'open', now() + interval '2 minutes');
 
 SELECT setval('orders_order_id_seq', (SELECT MAX(order_id) FROM orders));
 

@@ -12,8 +12,10 @@ import {
 } from "@/components/shared/states";
 import { isAdminOfSyndicate, isMemberOfSyndicate } from "@/domain/roles";
 import { DEMO_ORDER_ID, useOrder, type Order } from "@/features/orders/api";
+import { useEffectiveOrderStatus } from "@/features/orders/useEffectiveStatus";
 import { toOrderItemViews } from "@/features/orders/view";
 import { useMemberships } from "@/features/syndicates/api";
+import type { Database } from "@/lib/database.types";
 import { failureKindOf } from "@/lib/queryErrors";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/auth/AuthProvider";
@@ -21,10 +23,17 @@ import { Stack } from "expo-router";
 import { FlatList, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+type OrderStatus = Database["public"]["Enums"]["order_status"];
+
 export default function OrderScreen() {
   const { user } = useAuth();
   const order = useOrder(DEMO_ORDER_ID);
   const memberships = useMemberships(user?.id);
+
+  // What the screen draws from. Reads 'closed' from the moment the deadline
+  // passes, ahead of close_lapsed_orders writing it -- so the countdown, the
+  // badge, the cards and the stepper all turn over together on zero.
+  const status = useEffectiveOrderStatus(order.data);
 
   // Resolved once and used twice: the band shows an order's name and deadline
   // only to someone entitled to see them, so it can never sit above its own
@@ -61,6 +70,7 @@ export default function OrderScreen() {
     return (
       <OrderBoard
         order={order.data}
+        status={status ?? order.data.status}
         viewerId={user?.id ?? null}
         isAdmin={isAdminOfSyndicate(memberships.data, order.data.syndicate_id)}
       />
@@ -72,6 +82,7 @@ export default function OrderScreen() {
       <Stack.Screen options={{ headerShown: false }} />
       <Band
         order={viewerIsMember ? order.data : undefined}
+        status={status}
         email={user?.email ?? null}
       />
       {body()}
@@ -81,10 +92,12 @@ export default function OrderScreen() {
 
 function OrderBoard({
   order,
+  status,
   viewerId,
   isAdmin,
 }: {
   order: Order;
+  status: OrderStatus;
   viewerId: string | null;
   isAdmin: boolean;
 }) {
@@ -110,12 +123,16 @@ function OrderBoard({
         </Text>
       }
       renderItem={({ item }) => (
-        <OrderItemCard item={item} orderStatus={order.status} />
+        <OrderItemCard item={item} orderStatus={status} />
       )}
       ListFooterComponent={
         isAdmin ? (
           <View className="pt-4">
-            <AdminOrderActions orderId={order.order_id} status={order.status} />
+            <AdminOrderActions
+              orderId={order.order_id}
+              status={order.status}
+              lapsed={status === "closed" && order.status === "open"}
+            />
           </View>
         ) : null
       }
@@ -130,9 +147,11 @@ function OrderBoard({
  */
 function Band({
   order,
+  status,
   email,
 }: {
   order: Order | undefined;
+  status: OrderStatus | undefined;
   email: string | null;
 }) {
   const insets = useSafeAreaInsets();
@@ -168,22 +187,22 @@ function Band({
           </View>
         </View>
 
-        {order ? (
+        {order && status ? (
           <View className="flex-row items-end justify-between gap-3">
             <View className="flex-1">
-              {order.status === "open" ? (
+              {status === "open" ? (
                 <DeadlineCountdown deadlineAt={order.deadline_at} />
               ) : (
-                <ClosedNote status={order.status} />
+                <ClosedNote status={status} />
               )}
             </View>
-            <OrderStatusBadge status={order.status} onBand />
+            <OrderStatusBadge status={status} onBand />
           </View>
         ) : null}
       </View>
 
       {/* The band's bottom edge doubles as the window's own progress. */}
-      {order && order.status === "open" ? (
+      {order && status === "open" ? (
         <WindowRule
           openedAt={order.opened_at}
           deadlineAt={order.deadline_at}

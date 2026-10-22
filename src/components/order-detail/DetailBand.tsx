@@ -4,6 +4,7 @@ import {
 } from "@/components/order-list/DeadlineCountdown";
 import { OrderStatusBadge } from "@/components/shared/OrderStatusBadge";
 import type { Order } from "@/features/orders/api";
+import type { Database } from "@/lib/database.types";
 import { router } from "expo-router";
 import { Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,9 +19,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
  */
 export function DetailBand({
   order,
+  status,
   title,
 }: {
   order: Order;
+  /** The drawn status, which turns over on the deadline rather than on the write. */
+  status: Database["public"]["Enums"]["order_status"];
   /** The product's name. Absent while the item resolves, or if there is none. */
   title: string | undefined;
 }) {
@@ -34,7 +38,7 @@ export function DetailBand({
       >
         <View className="flex-row items-center justify-between gap-3">
           <BackToOrder />
-          <OrderStatusBadge status={order.status} onBand />
+          <OrderStatusBadge status={status} onBand />
         </View>
 
         {title ? (
@@ -43,12 +47,12 @@ export function DetailBand({
           </Text>
         ) : null}
 
-        {order.status === "open" ? (
+        {status === "open" ? (
           <DeadlineCountdown deadlineAt={order.deadline_at} />
         ) : null}
       </View>
 
-      {order.status === "open" ? (
+      {status === "open" ? (
         <WindowRule openedAt={order.opened_at} deadlineAt={order.deadline_at} />
       ) : null}
     </View>

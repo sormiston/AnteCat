@@ -312,3 +312,39 @@ $$ LANGUAGE plpgsql SET search_path = public, pg_temp;
 CREATE TRIGGER trg_apportion_on_close
 AFTER UPDATE OF status ON orders
 FOR EACH ROW EXECUTE FUNCTION apportion_on_close();
+
+-- The deadline closes the order by itself. Lives in this migration, not the
+-- orders one, because the whole point of the flip is the apportionment above:
+-- close_lapsed_orders writes status, trg_apportion_on_close settles the money.
+--
+-- pg_cron is non-relocatable and always installs to its own "cron" schema, so
+-- nothing here reaches public and PostgREST never exposes it.
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+-- closed_at is deadline_at, not now(): the order lapsed at its deadline, and
+-- the record should say so rather than say when the job noticed.
+--
+-- The WHERE clause is the whole guard -- status only ever moves forward, so a
+-- second run finds nothing and this is idempotent by construction. The UPDATE
+-- also takes a row lock that check_stake_order_is_open's FOR SHARE OF o waits
+-- on, which is exactly the race that lock was written for: a stake landing
+-- mid-close can no longer fill an item after apportionment has skipped it.
+CREATE OR REPLACE FUNCTION close_lapsed_orders() RETURNS INTEGER AS $$
+DECLARE
+  v_closed INTEGER;
+BEGIN
+  UPDATE orders
+  SET status = 'closed', closed_at = deadline_at
+  WHERE status = 'open'
+    AND deadline_at <= now();
+
+  GET DIAGNOSTICS v_closed = ROW_COUNT;
+  RETURN v_closed;
+END;
+$$ LANGUAGE plpgsql SET search_path = public, pg_temp;
+
+-- Every 10 seconds rather than every minute: the countdown is the demo's
+-- headline figure, and a minute of a visibly dead clock reads as a broken
+-- screen. Scheduling by name upserts, so `supabase db reset` re-runs this
+-- without stacking duplicate jobs.
+SELECT cron.schedule('close-lapsed-orders', '10 seconds', 'SELECT close_lapsed_orders()');

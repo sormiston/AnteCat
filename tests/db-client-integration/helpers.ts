@@ -230,11 +230,25 @@ export function apportionBundleStakes(
   return shares.map((s) => s.base + (bumped.has(s.index) ? 1 : 0));
 }
 
-export async function createTestOrder(supabase: TestClient): Promise<number> {
-  const deadlineAt = formatISO(addDays(new Date(), 4));
+/**
+ * An order open for four more days unless told otherwise.
+ *
+ * openedAt is settable because a lapsed order needs it: CHECK (deadline_at >
+ * opened_at) means a deadline in the past can only sit above an open further
+ * back still, so backdating one without the other is rejected.
+ */
+export async function createTestOrder(
+  supabase: TestClient,
+  opts: { openedAt?: string; deadlineAt?: string } = {},
+): Promise<number> {
+  const deadlineAt = opts.deadlineAt ?? formatISO(addDays(new Date(), 4));
   const { data, error } = await supabase
     .from("orders")
-    .insert({ syndicate_id: SYNDICATE_ID, deadline_at: deadlineAt })
+    .insert({
+      syndicate_id: SYNDICATE_ID,
+      deadline_at: deadlineAt,
+      ...(opts.openedAt ? { opened_at: opts.openedAt } : {}),
+    })
     .select("order_id")
     .single();
   if (error || !data) {

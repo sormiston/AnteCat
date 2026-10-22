@@ -1,12 +1,3 @@
-// The one place "what is this person to this syndicate" is decided, even
-// though exactly one syndicate exists today (SPEC.md's Component Inventory).
-// A syndicate picker later reads more memberships; it does not change this.
-//
-// Role is derived, not stored: syndicates.admin_user_id names the single admin
-// (docs/technical/backend.md), so a membership row plus that id is the whole
-// input. Nothing here is a security boundary -- the database has no RLS, and
-// an admin-gated control is a UX affordance until it does.
-
 export type SyndicateRole = "admin" | "member";
 
 export type Membership = {

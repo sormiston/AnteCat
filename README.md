@@ -46,7 +46,7 @@ This platform replaces the group chat as the _mechanism of commitment_ — not t
 
 ## Why this way
 
-Group chats already give people a place to talk about a bulk order — what they don't give them is a forcing function. The core bet is that swapping the _commitment_ step (not the conversation) out of chat and into a structured, time-boxed, enforced record is enough to fix the urgency/accountability/visibility problems. The platform's job is coordination, not commerce: it is not, and does not intend to become, a retailer that sells, stocks, ships, or fulfills anything itself.
+Group chats already give people a place to talk about a bulk order — what they don't give them is a forcing function. The core bet is that swapping the _commitment_ step (not the conversation) out of chat and into a structured, time-boxed, enforced record is enough to fix the urgency/accountability/visibility problems.
 
 ## Success looks like
 

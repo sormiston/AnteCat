@@ -1,6 +1,10 @@
 // Deadline math for the countdown. Pure and now-injectable, so tests drive it
 // with a fixed clock rather than fake timers plus real Date.
 
+import type { Database } from "@/lib/database.types";
+
+type OrderStatus = Database["public"]["Enums"]["order_status"];
+
 export type TimeRemaining = {
   days: number;
   hours: number;
@@ -96,4 +100,26 @@ export function timeRemainingParts(remaining: TimeRemaining): {
 export function formatTimeRemaining(remaining: TimeRemaining): string {
   const { days, clock } = timeRemainingParts(remaining);
   return days ? `${days} ${clock}` : clock;
+}
+
+/**
+ * What the order's status is, as against what the row last said.
+ *
+ * close_lapsed_orders flips a lapsed order for real, but it runs on a schedule,
+ * so for a few seconds after the clock hits zero the row still reads 'open'.
+ * Waiting that out would leave the countdown sitting at 0:00:00 above a live
+ * stepper -- the one moment of the demo where the screen must not lag. So the
+ * screens draw from this instead, and the write the server is about to make
+ * only confirms what they already show.
+ *
+ * Display only. Anything that writes reads orders.status, because the database
+ * is still the thing that decides what transitions are legal -- see
+ * AdminOrderActions.
+ */
+export function effectiveOrderStatus(
+  status: OrderStatus,
+  deadlineAt: string | Date,
+  now: Date = new Date(),
+): OrderStatus {
+  return status === "open" && isPastDeadline(deadlineAt, now) ? "closed" : status;
 }

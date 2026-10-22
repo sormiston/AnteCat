@@ -1,4 +1,4 @@
-import { formatISO } from "date-fns";
+import { addDays, formatISO, subDays } from "date-fns";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   apportionBundleStakes,
@@ -1034,5 +1034,162 @@ describe("trg_sync_tiered_unit_price + trg_sync_stake_amounts_on_unit_price", ()
     // stake_qty, not just the marginal units that crossed the boundary.
     expect(amountByUser.get(MEMBER_2)).toBe(beforeQty * tier1.unitPrice);
     expect(amountByUser.get(MEMBER_3)).toBe(crossQty * tier1.unitPrice);
+  });
+});
+
+// close_lapsed_orders: the scheduled half of "an order closes automatically
+// when its deadline elapses" (README). pg_cron calls this every 10 seconds;
+// these tests call it directly, so nothing here waits on a clock.
+//
+// The flip is an ordinary open -> closed UPDATE, which is the point: it goes
+// through trg_apportion_on_close exactly as the admin's own close does, so a
+// lapsed order settles its packs without anybody pressing anything.
+describe("close_lapsed_orders", () => {
+  const supabase = createServiceRoleClient();
+  const orderIds: number[] = [];
+
+  const lapsedAt = (daysAgo: number) => ({
+    openedAt: formatISO(subDays(new Date(), daysAgo + 1)),
+    deadlineAt: formatISO(subDays(new Date(), daysAgo)),
+  });
+
+  const createOrder = async (opts?: { openedAt?: string; deadlineAt?: string }) => {
+    const orderId = await createTestOrder(supabase, opts);
+    orderIds.push(orderId);
+    return orderId;
+  };
+
+  afterEach(async () => {
+    while (orderIds.length) await cleanupOrder(supabase, orderIds.pop()!);
+  });
+
+  it("closes an order whose deadline has passed, stamping closed_at with the deadline itself", async () => {
+    const { openedAt, deadlineAt } = lapsedAt(1);
+    const orderId = await createOrder({ openedAt, deadlineAt });
+
+    const { error } = await supabase.rpc("close_lapsed_orders");
+    expect(error).toBeNull();
+
+    const { data } = await supabase
+      .from("orders")
+      .select("status, deadline_at, closed_at")
+      .eq("order_id", orderId)
+      .single();
+    expect(data?.status).toBe("closed");
+    // Not now(): the order lapsed at its deadline, whenever the job noticed.
+    expect(data?.closed_at).toBe(data?.deadline_at);
+  });
+
+  it("leaves an order whose deadline is still ahead of it open", async () => {
+    const orderId = await createOrder({
+      deadlineAt: formatISO(addDays(new Date(), 4)),
+    });
+
+    await supabase.rpc("close_lapsed_orders");
+
+    const { data } = await supabase
+      .from("orders")
+      .select("status, closed_at")
+      .eq("order_id", orderId)
+      .single();
+    expect(data?.status).toBe("open");
+    expect(data?.closed_at).toBeNull();
+  });
+
+  it("settles a filled bundle on the way through, the same as an admin close", async () => {
+    const { openedAt, deadlineAt } = lapsedAt(1);
+    const orderId = await createOrder({ openedAt, deadlineAt });
+    const itemId = await createOrderItem(supabase, orderId, THRESHOLD_PRODUCT_ID);
+
+    const stakeQtys = Array(3).fill(THRESHOLD_CONFIG.thresholdQty / 3);
+    for (const [i, userId] of [MEMBER_2, MEMBER_3, MEMBER_4].entries()) {
+      await supabase.from("order_item_stakes").insert({
+        order_item_id: itemId,
+        user_id: userId,
+        stake_qty: stakeQtys[i],
+      });
+    }
+
+    // Floored per-row until the close: short of the pack price by the remainder.
+    const { data: before } = await supabase
+      .from("order_item_stakes")
+      .select("stake_amount")
+      .eq("order_item_id", itemId);
+    expect(
+      before?.reduce((sum, stake) => sum + stake.stake_amount, 0),
+    ).toBeLessThan(THRESHOLD_CONFIG.bundlePrice);
+
+    await supabase.rpc("close_lapsed_orders");
+
+    const { data: after } = await supabase
+      .from("order_item_stakes")
+      .select("stake_id, stake_amount")
+      .eq("order_item_id", itemId)
+      .order("stake_id", { ascending: true });
+    expect(after?.map((stake) => stake.stake_amount)).toEqual(
+      apportionBundleStakes(stakeQtys),
+    );
+    expect(after?.reduce((sum, stake) => sum + stake.stake_amount, 0)).toBe(
+      THRESHOLD_CONFIG.bundlePrice,
+    );
+  });
+
+  // Runs every 10 seconds forever, so it has to be safe to run over an order
+  // it has already closed. The WHERE clause is the whole guard: a closed row
+  // no longer matches, so nothing re-apportions and closed_at is not restamped.
+  //
+  // Asserted as state rather than as a returned row count, because the real
+  // pg_cron job is running against this database throughout the suite and may
+  // well have closed the order already -- which is the behaviour under test,
+  // not a race to work around.
+  it("is a no-op on a second pass, leaving the settled amounts alone", async () => {
+    const { openedAt, deadlineAt } = lapsedAt(1);
+    const orderId = await createOrder({ openedAt, deadlineAt });
+    const itemId = await createOrderItem(supabase, orderId, THRESHOLD_PRODUCT_ID);
+    await supabase.from("order_item_stakes").insert({
+      order_item_id: itemId,
+      user_id: MEMBER_2,
+      stake_qty: THRESHOLD_CONFIG.thresholdQty,
+    });
+
+    await supabase.rpc("close_lapsed_orders");
+
+    const { data: settled } = await supabase
+      .from("orders")
+      .select("status, closed_at")
+      .eq("order_id", orderId)
+      .single();
+    expect(settled?.status).toBe("closed");
+
+    await supabase.rpc("close_lapsed_orders");
+
+    const { data: after } = await supabase
+      .from("orders")
+      .select("status, closed_at")
+      .eq("order_id", orderId)
+      .single();
+    expect(after?.status).toBe("closed");
+    expect(after?.closed_at).toBe(settled?.closed_at);
+
+    // A single stake taking the whole pack: re-apportioning would be invisible
+    // here, so the figure that matters is that it is still the pack price.
+    const { data: stakes } = await supabase
+      .from("order_item_stakes")
+      .select("stake_amount")
+      .eq("order_item_id", itemId);
+    expect(stakes?.[0].stake_amount).toBe(THRESHOLD_CONFIG.bundlePrice);
+  });
+
+  it("stops a stake landing after the deadline, the same as any closed order", async () => {
+    const { openedAt, deadlineAt } = lapsedAt(1);
+    const orderId = await createOrder({ openedAt, deadlineAt });
+    const itemId = await createOrderItem(supabase, orderId, TIERED_PRODUCT_ID);
+
+    await supabase.rpc("close_lapsed_orders");
+
+    const { error } = await supabase
+      .from("order_item_stakes")
+      .insert({ order_item_id: itemId, user_id: MEMBER_5, stake_qty: 1 });
+    expect(error).not.toBeNull();
   });
 });

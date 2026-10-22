@@ -1,4 +1,5 @@
 import {
+  effectiveOrderStatus,
   formatTimeRemaining,
   timeRemainingParts,
   isPastDeadline,
@@ -109,5 +110,34 @@ describe("timeRemainingParts", () => {
       days: null,
       clock: "0:00:00",
     });
+  });
+});
+
+describe("effectiveOrderStatus", () => {
+  const future = "2026-09-18T14:30:45.000Z";
+  const past = "2026-09-14T09:00:00.000Z";
+
+  it("leaves an open order open while time is left", () => {
+    expect(effectiveOrderStatus("open", future, NOW)).toBe("open");
+  });
+
+  it("reads an open order as closed once the deadline has passed", () => {
+    expect(effectiveOrderStatus("open", past, NOW)).toBe("closed");
+  });
+
+  it("turns over on the deadline's own instant, the moment the clock reads zero", () => {
+    expect(effectiveOrderStatus("open", NOW, NOW)).toBe("closed");
+  });
+
+  // Only ever derives the open -> closed step. The rest of the ladder is the
+  // database's, and a passed deadline must not drag an executed order back.
+  it("passes a closed order through", () => {
+    expect(effectiveOrderStatus("closed", past, NOW)).toBe("closed");
+    expect(effectiveOrderStatus("closed", future, NOW)).toBe("closed");
+  });
+
+  it("passes an executed order through, deadline or no deadline", () => {
+    expect(effectiveOrderStatus("executed", past, NOW)).toBe("executed");
+    expect(effectiveOrderStatus("executed", future, NOW)).toBe("executed");
   });
 });

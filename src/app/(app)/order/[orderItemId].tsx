@@ -4,7 +4,7 @@ import { StakeList } from "@/components/order-detail/StakeList";
 import { StakeStepper } from "@/components/order-detail/StakeStepper";
 import { CapacityMeter } from "@/components/shared/CapacityMeter";
 import { ResolutionBadge } from "@/components/shared/ResolutionBadge";
-import { standing } from "@/components/shared/standing";
+import { StandingLine } from "@/components/shared/StandingLine";
 import {
   EmptyState,
   ErrorState,
@@ -18,8 +18,10 @@ import {
   useWithdrawStake,
   type Order,
 } from "@/features/orders/api";
+import { useEffectiveOrderStatus } from "@/features/orders/useEffectiveStatus";
 import { findOrderItemView, type OrderItemView } from "@/features/orders/view";
 import { useMemberships, useSyndicateMembers } from "@/features/syndicates/api";
+import type { Database } from "@/lib/database.types";
 import { failureKindOf } from "@/lib/queryErrors";
 import { useAuth } from "@/providers/auth/AuthProvider";
 import { useLocalSearchParams } from "expo-router";
@@ -39,6 +41,11 @@ export default function OrderItemDetailScreen() {
   const { user } = useAuth();
   const order = useOrder(DEMO_ORDER_ID);
   const memberships = useMemberships(user?.id);
+
+  // Closed from the deadline on, not from the write on -- so the stepper is
+  // gone by the time the clock reads zero, rather than inviting a share that
+  // close_lapsed_orders is seconds from refusing.
+  const status = useEffectiveOrderStatus(order.data);
 
   const viewerIsMember =
     order.data && memberships.data
@@ -85,6 +92,7 @@ export default function OrderItemDetailScreen() {
     return (
       <ItemDetail
         order={order.data}
+        status={status ?? order.data.status}
         item={item}
         viewerId={user?.id ?? null}
       />
@@ -97,7 +105,11 @@ export default function OrderItemDetailScreen() {
           resolves -- which keeps the countdown steady rather than flashing in
           after everything else. */}
       {viewerIsMember && order.data ? (
-        <DetailBand order={order.data} title={item?.name} />
+        <DetailBand
+          order={order.data}
+          status={status ?? order.data.status}
+          title={item?.name}
+        />
       ) : (
         <View className="h-2 bg-table" />
       )}
@@ -108,14 +120,16 @@ export default function OrderItemDetailScreen() {
 
 function ItemDetail({
   order,
+  status,
   item,
   viewerId,
 }: {
   order: Order;
+  status: Database["public"]["Enums"]["order_status"];
   item: OrderItemView;
   viewerId: string | null;
 }) {
-  const settled = order.status !== "open";
+  const settled = status !== "open";
   const members = useSyndicateMembers(order.syndicate_id);
   const commit = useCommitStake(order.order_id);
   const withdraw = useWithdrawStake(order.order_id);
@@ -140,15 +154,17 @@ function ItemDetail({
           ceiling={item.ceiling}
           viewerQty={item.viewerStake?.qty ?? 0}
         />
-        <Text className="text-[14px] leading-[20px] text-ink-soft">
-          {standing(item, settled)}
-        </Text>
+        <StandingLine
+          item={item}
+          settled={settled}
+          className="text-[14px] leading-[20px] text-ink-soft"
+        />
       </Section>
 
       <Section>
         <SectionTitle>Your share</SectionTitle>
         {settled ? (
-          <ClosedShare item={item} status={order.status} />
+          <ClosedShare item={item} status={status} />
         ) : viewerId ? (
           <StakeStepper
             item={item}

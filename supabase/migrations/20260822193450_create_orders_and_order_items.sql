@@ -16,6 +16,11 @@ CREATE TABLE orders (
 -- FK, looked up via "syndicate's orders" -- not auto-indexed by Postgres.
 CREATE INDEX idx_orders_syndicate_id ON orders (syndicate_id);
 
+-- Partial, because close_lapsed_orders (next migration) only ever scans for
+-- open orders whose deadline has passed -- closed and executed rows are dead
+-- weight in that index.
+CREATE INDEX idx_orders_open_deadline_at ON orders (deadline_at) WHERE status = 'open';
+
 -- Trigger: orders.status can only move forward (open -> closed -> executed)
 CREATE OR REPLACE FUNCTION check_order_status_transition() RETURNS TRIGGER AS $$
 BEGIN

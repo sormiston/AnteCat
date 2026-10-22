@@ -281,6 +281,7 @@ export type Database = {
         Args: { p_order_id: number }
         Returns: undefined
       }
+      close_lapsed_orders: { Args: never; Returns: number }
     }
     Enums: {
       order_item_resolution_status: "open" | "succeeded" | "maxed_out"

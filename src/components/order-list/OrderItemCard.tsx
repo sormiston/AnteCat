@@ -1,7 +1,7 @@
 import { CapacityMeter } from "@/components/shared/CapacityMeter";
 import { Numeral } from "@/components/shared/Numeral";
 import { ResolutionBadge } from "@/components/shared/ResolutionBadge";
-import { standing } from "@/components/shared/standing";
+import { StandingLine } from "@/components/shared/StandingLine";
 import { TierLadder } from "@/components/shared/TierLadder";
 import { formatEuroCents } from "@/domain/pricing";
 import { unitPriceOf, type OrderItemView } from "@/features/orders/view";
@@ -70,9 +70,11 @@ export function OrderItemCard({
           viewerQty={mine?.qty ?? 0}
         />
 
-        <Text className="text-[13px] leading-[18px] text-ink-soft">
-          {standing(item, settled)}
-        </Text>
+        <StandingLine
+          item={item}
+          settled={settled}
+          className="text-[13px] leading-[18px] text-ink-soft"
+        />
 
         <View className="gap-[6px] border-t border-rule pt-[10px]">
           <Figure
@@ -88,7 +90,11 @@ export function OrderItemCard({
             }
           />
           {isBundle && unitPrice !== null ? (
-            <Figure label="Each unit" value={formatEuroCents(unitPrice)} muted />
+            <Figure
+              label="Each unit"
+              value={formatEuroCents(unitPrice)}
+              muted
+            />
           ) : null}
 
           {mine ? (

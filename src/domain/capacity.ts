@@ -1,12 +1,3 @@
-// "Capacity" means two different things, and which one applies is decided by
-// pricing_type (docs/milestones/demo-alpha/SPEC.md):
-//
-//   threshold_bundle -- progress toward threshold_qty. The pack fills and the
-//                       item succeeds. Hard-capped: the database rejects a
-//                       stake that would overshoot, never clamps it.
-//   tiered           -- room left under order_items.max_quantity, which is
-//                       nullable. Null means no cap at all, not a cap of zero.
-
 export type PricingType = "threshold_bundle" | "tiered";
 
 /**

@@ -1,14 +1,10 @@
 /**
- * Thousands separators, hand-rolled.
- *
- * Not toLocaleString or Intl: the demo runs on three devices with three ICU
- * builds, and a shared ledger where two people read a different figure is
- * worse than one that ignores their locale.
+ * Thousands separators. The locale tag is pinned rather than left to the
+ * device: the demo runs on three devices, and a shared ledger where two people
+ * read a different figure is worse than one that ignores their locale.
  */
 export function groupDigits(value: number): string {
-  return Math.trunc(Math.abs(value))
-    .toString()
-    .replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return Math.trunc(Math.abs(value)).toLocaleString("en-US");
 }
 
 /** "1 unit" / "12 units", grouped. */

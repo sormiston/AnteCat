@@ -12,16 +12,19 @@ import { groupDigits, unitCount } from "@/lib/format";
  * switches from a prospect to an outcome rather than inviting a move nobody
  * can make.
  */
+export const SETTLED_TO_THE_CENT = "Settled to the cent.";
+
 export function standing(item: OrderItemView, settled: boolean): string {
   const taken =
     item.ceiling === null
       ? `${unitCount(item.quantity)} in.`
       : `${groupDigits(item.quantity)} of ${groupDigits(item.ceiling)} taken.`;
 
+  if (isSettledToTheCent(item, settled)) {
+    return `${taken} ${SETTLED_TO_THE_CENT}\nThese are the final shares.`;
+  }
   if (item.resolution === "succeeded") {
-    return settled
-      ? `${taken} Settled to the cent. These are the final shares.`
-      : `${taken} It settles the moment the order closes.`;
+    return `${taken} It settles the moment the order closes.`;
   }
   if (item.resolution === "maxed_out") {
     return `${taken} There is nothing left to take.`;
@@ -42,4 +45,12 @@ export function standing(item: OrderItemView, settled: boolean): string {
     return `${taken} ${unitsAway} more and everyone pays ${formatEuroCents(tier.unitPrice)} each.`;
   }
   return `${taken} This is the best price on offer.`;
+}
+
+/**
+ * A filled pack on a closed order: apportion_bundle_stakes has restated every
+ * share so they sum to exactly the pack price.
+ */
+export function isSettledToTheCent(item: OrderItemView, settled: boolean) {
+  return settled && item.resolution === "succeeded";
 }

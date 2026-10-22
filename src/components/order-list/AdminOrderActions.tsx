@@ -14,15 +14,25 @@ type OrderStatus = Database["public"]["Enums"]["order_status"];
  * forward. So each one arms first and commits on a second press, which is a
  * confirmation that works the same on iOS, Android and web -- Alert.alert does
  * nothing at all on web, and this demo runs on all three at once.
+ *
+ * Alone among the status-reading components, this one takes orders.status
+ * itself rather than the deadline-derived status the rest of the screen draws.
+ * It writes, and only the row decides which writes the database will take: fed
+ * a derived 'closed' it would offer "Mark as bought" over an order still open,
+ * and trg_order_status_transition would reject the skipped step.
  */
 const DISARM_AFTER_MS = 6000;
 
 export function AdminOrderActions({
   orderId,
   status,
+  lapsed,
 }: {
   orderId: number;
+  /** orders.status as the row holds it, never the derived one. */
   status: OrderStatus;
+  /** The deadline has passed but close_lapsed_orders has not landed yet. */
+  lapsed: boolean;
 }) {
   const close = useCloseOrder(orderId);
   const execute = useExecuteOrder(orderId);
@@ -45,6 +55,16 @@ export function AdminOrderActions({
         error={execute.error}
         onConfirm={() => execute.mutate()}
       />
+    );
+  }
+
+  // Closing early is no longer on offer -- the deadline has done it. Seconds,
+  // then the scheduled close lands over Realtime and "Mark as bought" appears.
+  if (lapsed) {
+    return (
+      <Note>
+        The deadline has passed. Settling every complete pack to the cent now.
+      </Note>
     );
   }
 
